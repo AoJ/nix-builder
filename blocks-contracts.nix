@@ -70,7 +70,9 @@ in
   };
 
   ##########################################################################
-  # store — store paths in, a filesystem holding them out, DB registered.
+  # store — a TOOL, not a block: it answers to no endpoint and `image` is what
+  # asks for it. Written here because it has a contract of its own and its own
+  # test. Its squashfs output is incomplete on purpose — see the design.
   ##########################################################################
   store = {
     rootPaths = mkOption {
@@ -98,6 +100,13 @@ in
           registered = mkOption {
             type = types.bool;
             description = "Declared so a test can assert it, not so a caller can turn it off.";
+          };
+          needsBootUnit = mkOption {
+            type = types.bool;
+            description = ''
+              True for squashfs: the database cannot live in a read-only store, so a unit
+              must load the dump at every boot. The tool cannot supply that half.
+            '';
           };
         };
       };

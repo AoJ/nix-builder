@@ -26,13 +26,42 @@ matrix; a test that needs no host can.
 |---|---|---|
 | `image` | a system, a format | the artifact, and the toplevel that went into it |
 | `install` | a closure and how to place it | a system that installs it |
-| `store` | store paths, a shape | a filesystem holding them, with a valid nix DB |
 | `secrets` | files, a medium | a sidecar file |
 | `personalize` | a finished artifact, files | that artifact with its slot filled |
 
 `#closure` / `#derivation` / `#closure-live` / `#derivation-live` are **not blocks**. They are
 names for something a block already returned; naming them costs nothing and building them twice
 is what produces a reconstruction that has to be asserted equal to the original.
+
+## Tools
+
+Blocks are not fully isolated: some mechanism is shared (the bash tooling, the store algorithm).
+Sharing it must not become blocks calling each other, so the two are separated by what they are,
+not by convention.
+
+| | block | tool |
+|---|---|---|
+| answers to an endpoint | yes | no |
+| has an intent | "give me the host in this format" | "turn these paths into a filesystem" |
+| what its test covers | the mechanism you are guarding | part of a block's test |
+| who calls it | the composer | anyone |
+
+**Dependencies run one way: block → tool. Never block → block, never tool → block.** The graph is
+then acyclic by construction rather than by discipline.
+
+To make that unavoidable rather than agreed, **a block imports nothing**. Tools arrive as an
+input, exactly like `pkgs`:
+
+    { pkgs, tools }:
+
+`tools` is to this repo's mechanisms what `pkgs` is to nixpkgs — one set, handed over whole, so no
+detail leaks: nobody writes in the composer that `image` needs the store, any more than they write
+that it needs mtools. The rule is then absolute and the check is trivial: **any `import` under
+`blocks/` is an error.** No detection of cross-calls is needed, because a block has nothing to
+reach another block with.
+
+The cost: one place assembles `tools`, and it is the only privileged place in the structure. Only
+tools may go in it. A block placed there would let a block reach a block, and the rule falls.
 
 ## image
 
@@ -69,36 +98,30 @@ out.
 Two things are in flight and they are different: the system being installed, and the system doing
 the installing. The block builds the second and carries the first.
 
-## store
+## store — a tool, inside image
 
-Store paths in, a filesystem holding them out — with the nix database **registered**, not just
-the paths copied. A store whose paths are present but unregistered answers "not valid" about a
-path in front of it, and anything copying a closure out of it refuses to start.
+Store paths in, a filesystem holding them out — with the nix database **registered**, not just the
+paths copied. A store whose paths are present but unregistered answers "not valid" about a path in
+front of it, and anything copying a closure out of it refuses to start.
 
-The constraint that decides where this belongs: **registration is two different mechanisms, not
-one.**
+It belongs to `image` (aoj, 2026-09-13) and is reached as a tool, not as a block: `image` is the
+only thing that asks for it as part of an endpoint, while a tool still carries its own test.
+
+**Registration is two mechanisms, not one**, because the database does not live where the store
+does — the store is at `/nix/store`, the database at `/nix/var/nix/db`:
 
 | shape | where the database comes from |
 |---|---|
-| ext4 (writable) | loaded into the image at **build** time |
-| squashfs (read-only) | the image carries only the dump; it is loaded **at boot**, by a service |
+| ext4 (writable) | both live on one writable filesystem, so the database is written **at build time** and the image carries it |
+| squashfs (read-only) | the image is mounted read-only at `/nix/store`, and the database's place is a tmpfs that boots empty — so the image carries only a dump, and a **unit loads it at every boot** |
 
-So the squashfs half is not a file — it is a file *plus a unit in the configuration of the system
-that runs from it*. A block that produces a file cannot supply the second half.
+So the squashfs output is a file **and** a unit, and a tool that produces a file cannot supply the
+unit. The unit is not optional: without it that store does not work.
 
-Consumers, and who builds their store today:
+Who has it today: nixpkgs provides both halves for the live ISO and for netboot. The appliance in
+the odložená branch has its own; **`dev` has none at all.** That gap is why this keeps coming back.
 
-| consumer | shape | built by |
-|---|---|---|
-| a disk image's root | ext4 | this repo |
-| the in-memory appliance | squashfs | this repo |
-| a live ISO | squashfs | nixpkgs |
-| netboot (kexec / ipxe) | squashfs | nixpkgs |
-| the closure an offline installer carries | — | install |
-
-Open, with a recommendation: **not a block.** The ext4 branch is inside `image`; the squashfs
-branch is a pair whose second half belongs to the configuration of the system that boots it, and
-for ISO and netboot nixpkgs already owns both halves.
+Open: who owns the unit half for the appliance.
 
 ## secrets
 
@@ -162,6 +185,7 @@ of operation to artifact is in the plan and does not change here. No block knows
 
 ## Open
 
-1. `store` as a block, or inside `image` — recommendation above, not decided.
-2. The slot's descriptor: what a layout states, and what `image` reads it from.
+1. The slot's descriptor: what a layout states, and what `image` reads it from.
+2. Who owns the unit half of a squashfs store for the appliance.
 3. Whether a validation gate is wanted beyond the two checks above, and where it sits.
+4. Where `tools` is assembled, and what belongs in it besides the bash tooling and the store.

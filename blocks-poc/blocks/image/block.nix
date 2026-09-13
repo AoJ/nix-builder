@@ -53,8 +53,6 @@ in
 
   config.out =
     let
-      closure = pkgs.closureInfo { rootPaths = config.storePaths; };
-
       store = tools.store {
         inherit (config) name;
         rootPaths = config.storePaths;

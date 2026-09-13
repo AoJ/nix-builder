@@ -70,8 +70,8 @@ let
       # -E no_copy_xattrs: on a SELinux host mke2fs reads security.selinux off the
       # staged tree and aborts. The label has no meaning inside the image anyway.
       SOURCE_DATE_EPOCH=1 fakeroot mke2fs -q -t ext4 -b 4096 -L ${lib.escapeShellArg label} \
-        -E no_copy_xattrs,hash_seed=${uuid},root_owner=0:0 \
-        -N "$inodes" -U ${uuid} -d "$staged" -F "$out" "$blocks"
+        -E ${lib.escapeShellArg "no_copy_xattrs,hash_seed=${uuid},root_owner=0:0"} \
+        -N "$inodes" -U ${lib.escapeShellArg uuid} -d "$staged" -F "$out" "$blocks"
     '';
 
   squashfs = pkgs.runCommand "store-squashfs.img"

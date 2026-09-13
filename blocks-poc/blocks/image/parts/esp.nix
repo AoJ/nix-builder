@@ -44,7 +44,7 @@ pkgs.runCommand "esp.img"
     # mkfs.fat and mtools both honour the stdenv's SOURCE_DATE_EPOCH, which is where every
     # timestamp in this image comes from; without it mkfs.fat reads the wall clock. The volume
     # id comes from the image name, so two images never answer the same by-uuid lookup.
-    mkfs.fat -F 32 -n ESP -i ${ids.volumeId "${name}:esp"} "$out"
+    mkfs.fat -F 32 -n ESP -i ${lib.escapeShellArg (ids.volumeId "${name}:esp")} "$out"
     (cd "$staged" && find . -mindepth 1 -type d -printf '%P\n' | sort \
       | while IFS= read -r d; do mmd -i "$out" "::/$d"; done)
     (cd "$staged" && find . -mindepth 1 -type f -printf '%P\n' | sort \

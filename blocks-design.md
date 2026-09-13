@@ -79,8 +79,14 @@ exactly that — every ISO carries label `EFIBOOT` and fs uuid `1234-5678`, whic
 lookup cannot be trusted there.
 
 Nix cannot gate the first for us: two builds of one derivation are the same store path, so a
-non-deterministic builder is invisible to it. It is gated where everything else is, in the
-block's own test, by forcing a second build of the same inputs and comparing.
+non-deterministic builder is invisible to it. It is gated where everything else is — in the test
+that belongs to whatever produced the artifact — by forcing a second build of the same inputs and
+comparing.
+
+**Both properties are per-architecture.** A native and an emulated build of one squashfs come out
+the same size and not the same bytes, so "the same bytes" holds for two builds on the same
+architecture and is not a claim about an artifact built in two places. That matters for the
+aarch64 hosts, whose images are built emulated or on a foreign builder.
 
 ## image
 
@@ -184,6 +190,11 @@ topology and must not reach into it.
 there is an fs layout, the layout provides it. Where there is none — `iso` has no layout,
 `kexec` / `ipxe` have no filesystem at all — `image` provides it, because it is already making
 that shape.
+
+Today that first half has no executor: the only layout is zfs, and a zfs host has no
+`#image-raw` to put a slot in — the pool comes from the install, so the combination is a hole the
+matrix names. An ext4 layout does not exist yet. So **in practice `image` provides every slot**,
+and the rule's other half is written down for the layout that will want it, not for one that does.
 
 The rule is not enforced in general, and it does not need to be: **it is conditional on the host
 asking for it.** A host that declares no embedded delivery owes nothing. A host that declares one

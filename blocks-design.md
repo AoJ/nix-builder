@@ -49,16 +49,17 @@ not by convention.
 **Dependencies run one way: block → tool. Never block → block, never tool → block.** The graph is
 then acyclic by construction rather than by discipline.
 
-To make that unavoidable rather than agreed, **a block imports nothing**. Tools arrive as an
-input, exactly like `pkgs`:
+To make that unavoidable rather than agreed, **a block imports nothing outside its own
+directory**. Its own parts it may split into files freely — nobody else sees them. Tools arrive as
+an input, exactly like `pkgs`:
 
     { pkgs, tools }:
 
 `tools` is to this repo's mechanisms what `pkgs` is to nixpkgs — one set, handed over whole, so no
 detail leaks: nobody writes in the composer that `image` needs the store, any more than they write
-that it needs mtools. The rule is then absolute and the check is trivial: **any `import` under
-`blocks/` is an error.** No detection of cross-calls is needed, because a block has nothing to
-reach another block with.
+that it needs mtools. The check is then trivial: **an import under `blocks/` that leaves the
+block's own directory is an error.** No detection of cross-calls is needed, because a block has
+nothing to reach another block with.
 
 The cost: one place assembles `tools`, and it is the only privileged place in the structure. Only
 tools may go in it. A block placed there would let a block reach a block, and the rule falls.
@@ -115,13 +116,31 @@ does — the store is at `/nix/store`, the database at `/nix/var/nix/db`:
 | ext4 (writable) | both live on one writable filesystem, so the database is written **at build time** and the image carries it |
 | squashfs (read-only) | the image is mounted read-only at `/nix/store`, and the database's place is a tmpfs that boots empty — so the image carries only a dump, and a **unit loads it at every boot** |
 
-So the squashfs output is a file **and** a unit, and a tool that produces a file cannot supply the
-unit. The unit is not optional: without it that store does not work.
+### The unit is not the block's, and not the chain's
 
-Who has it today: nixpkgs provides both halves for the live ISO and for netboot. The appliance in
-the odložená branch has its own; **`dev` has none at all.** That gap is why this keeps coming back.
+A squashfs store needs that unit, and the tool cannot give it — but it does not follow that the
+chain has to carry a configuration. The unit belongs to **whatever module declares the read-only
+store**, because those are not two properties but one: a configuration that says
+`fileSystems."/nix/store"` is a squashfs does not work without it, the way a mount does not work
+without a filesystem.
 
-Open: who owns the unit half for the appliance.
+The alternative is not merely unattractive, it is a cycle. The tool takes the toplevel as its
+input; if it returned the unit, the unit would have to be in the configuration that toplevel was
+built from:
+
+    configuration → toplevel → store(toplevel) → unit → configuration
+
+nixpkgs resolves it the same way: the unit sits in the configuration statically and does not
+depend on the squashfs at all, reading a constant path that `make-squashfs.nix` writes into every
+image. **Both sides take that path from nixpkgs, not from each other**, which is why no dependency
+runs between the tool and the module.
+
+What remains a real agreement is that constant, spanning build time and boot — so it is asserted
+in the tool's own test rather than left to hold by habit.
+
+Status: nixpkgs supplies both halves for the live ISO and for netboot. For the appliance, the
+withdrawn branch has the unit and **`dev` has none at all** — a real gap, not a design question,
+and the implementation already exists to carry over.
 
 ## secrets
 
@@ -186,6 +205,5 @@ of operation to artifact is in the plan and does not change here. No block knows
 ## Open
 
 1. The slot's descriptor: what a layout states, and what `image` reads it from.
-2. Who owns the unit half of a squashfs store for the appliance.
-3. Whether a validation gate is wanted beyond the two checks above, and where it sits.
-4. Where `tools` is assembled, and what belongs in it besides the bash tooling and the store.
+2. Whether a validation gate is wanted beyond the two checks above, and where it sits.
+3. What belongs in `tools` besides the bash tooling and the store.

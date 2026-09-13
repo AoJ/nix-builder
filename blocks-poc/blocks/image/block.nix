@@ -1,4 +1,4 @@
-{ lib, config, pkgs, ... }:
+{ lib, config, pkgs, tools, ... }:
 
 let
   inherit (lib) mkOption types;
@@ -55,32 +55,13 @@ in
     let
       closure = pkgs.closureInfo { rootPaths = config.storePaths; };
 
-      root = pkgs.runCommand "root.img"
-        { nativeBuildInputs = [ pkgs.e2fsprogs pkgs.fakeroot pkgs.coreutils ]; }
-        ''
-          set -euo pipefail
-          staged="$(mktemp -d)"
-          mkdir -p "$staged/nix/store"
-          while IFS= read -r p; do
-            cp -a --reflink=auto "$p" "$staged/nix/store/"
-          done < ${closure}/store-paths
-          cp ${closure}/registration "$staged/nix/store/.registration"
-
-          # A store tree is many small files: the default inode ratio runs out long
-          # before the space does, and du reports ALLOCATED blocks, so both numbers
-          # are computed from the tree itself with room to spare.
-          files="$(find "$staged" | wc -l)"
-          kib="$(du -sk --apparent-size "$staged" | cut -f1)"
-          size_mib=$(( kib / 1024 + kib / 4096 + 128 ))
-
-          truncate -s "''${size_mib}M" "$out"
-          # -E no_copy_xattrs: on a SELinux host mke2fs reads security.selinux off the
-          # staged tree and aborts. The label has no meaning inside the image anyway.
-          fakeroot mke2fs -t ext4 -b 4096 -L nixos -E no_copy_xattrs \
-            -N "$(( files * 2 + 4096 ))" \
-            -U deadbeef-dead-beef-dead-beefdeadbeef \
-            -d "$staged" "$out"
-        '';
+      # The store is a TOOL, handed in — not something this block reaches out for.
+      # Everything about registering the nix database is inside it.
+      store = tools.store {
+        rootPaths = config.storePaths;
+        shape = "ext4";
+        label = "nixos";
+      };
 
       bootEfi =
         if config.system == "x86_64-linux"
@@ -100,7 +81,7 @@ in
               }];
             };
           }
-          { fs = "ext4"; label = "nixos"; img = root; }
+          { fs = "ext4"; label = "nixos"; img = store.img; }
         ];
       };
     in

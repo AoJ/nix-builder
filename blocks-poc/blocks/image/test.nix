@@ -1,7 +1,7 @@
-{ pkgs }:
+{ pkgs, tools }:
 
 let
-  image = import ./default.nix { inherit pkgs; };
+  image = import ./default.nix { inherit pkgs tools; };
 
   # Assembled BY HAND. No nixosSystem anywhere, no host anywhere.
   built = image {

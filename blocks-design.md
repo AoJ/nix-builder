@@ -64,6 +64,24 @@ nothing to reach another block with.
 The cost: one place assembles `tools`, and it is the only privileged place in the structure. Only
 tools may go in it. A block placed there would let a block reach a block, and the rule falls.
 
+## Reproducibility and identity
+
+Two properties of every artifact a block hands over, and they are not the same property.
+
+**Two builds of one image are the same bytes.** Nothing gives this for free: every filesystem
+tool stamps a wall clock or generates an id unless told not to.
+
+**Two different images are never the same identity.** Every uuid, guid and volume id is derived
+from the image's name — not generated, and not a constant. A constant satisfies the first
+property and violates this one: it is deterministic AND wrong, because two images then answer the
+same `by-uuid` lookup, and that shows up on a machine rather than in a build. nixpkgs ships
+exactly that — every ISO carries label `EFIBOOT` and fs uuid `1234-5678`, which is why a by-label
+lookup cannot be trusted there.
+
+Nix cannot gate the first for us: two builds of one derivation are the same store path, so a
+non-deterministic builder is invisible to it. It is gated where everything else is, in the
+block's own test, by forcing a second build of the same inputs and comparing.
+
 ## image
 
 Packs one system into one format. Everything about how a format is made is inside.
@@ -184,6 +202,12 @@ There are **two checks and they cannot be merged**, because each catches a diffe
 
 The first cannot catch a build that drifted from its declaration; the second cannot run at eval,
 because it works on a finished file.
+
+The second is only reachable if the producer leaves a filesystem where the slot is, rather than a
+hole — a hole answers no question about whether the offset is right, and a private key written to
+the wrong offset is not recoverable by noticing afterwards. So `image` reserves the slot, formats
+it, and leaves it empty: empty is what keeps phase one cacheable and secret-free, formatted is
+what lets phase two refuse.
 
 ## What the endpoints map to
 

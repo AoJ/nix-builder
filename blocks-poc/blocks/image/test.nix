@@ -13,6 +13,21 @@ let
     kernelParams = [ "console=ttyS0" "root=LABEL=nixos" ];
     storePaths = [ pkgs.hello ];
   };
+
+  # Same builder, same inputs, a different derivation — so nix really builds it a second time.
+  # Two builds of ONE derivation are the same store path, which is why a non-deterministic
+  # builder is invisible to nix and why this has to be forced.
+  again = d: d.overrideAttrs (_: { determinismProbe = "2"; });
+
+  elsewhere = image {
+    name = "other";
+    format = "raw";
+    system = "x86_64-linux";
+    kernel = pkgs.writeText "bzImage" "not a kernel, but it is a file";
+    initrd = pkgs.writeText "initrd" "not an initrd either";
+    kernelParams = [ "console=ttyS0" "root=LABEL=nixos" ];
+    storePaths = [ pkgs.hello ];
+  };
 in
 pkgs.runCommand "test-image"
   { nativeBuildInputs = [ pkgs.gptfdisk pkgs.mtools pkgs.e2fsprogs pkgs.jq ]; }
@@ -40,6 +55,14 @@ pkgs.runCommand "test-image"
        skip=$(( root_off / 1048576 )) count=$(( root_len / 1048576 )) status=none
     dumpe2fs -h root.img | grep -q 'Filesystem volume name:   nixos'
     debugfs -R "ls /nix/store" root.img | tr ' ' '\n' | grep -q hello
+
+    echo "== built twice, byte for byte the same =="
+    cmp ${built.file} ${again built.file}
+
+    echo "== two names, two identities: no shared constant =="
+    mine="$(sgdisk -p ${built.file} | awk '/Disk identifier/ { print $NF }')"
+    theirs="$(sgdisk -p ${elsewhere.file} | awk '/Disk identifier/ { print $NF }')"
+    [ -n "$mine" ] && [ "$mine" != "$theirs" ]
 
     touch $out
   ''

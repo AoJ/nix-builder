@@ -3,8 +3,8 @@
 let
   inherit (lib) mkOption types;
 
-  esp = import ./parts/esp.nix { inherit pkgs lib; };
-  gpt = import ./parts/gpt.nix { inherit pkgs lib; };
+  esp = import ./parts/esp.nix { inherit pkgs lib; inherit (tools) ids; };
+  gpt = import ./parts/gpt.nix { inherit pkgs lib; inherit (tools) ids; };
 in
 {
   options = {
@@ -55,9 +55,8 @@ in
     let
       closure = pkgs.closureInfo { rootPaths = config.storePaths; };
 
-      # The store is a TOOL, handed in — not something this block reaches out for.
-      # Everything about registering the nix database is inside it.
       store = tools.store {
+        inherit (config) name;
         rootPaths = config.storePaths;
         shape = "ext4";
         label = "nixos";
@@ -72,7 +71,7 @@ in
         inherit (config) name;
         partitions = [
           { fs = "vfat"; label = "ESP"; img = esp {
-              inherit (config) system;
+              inherit (config) name system;
               bootloader = bootEfi;
               entries = [{
                 name = "nixos";

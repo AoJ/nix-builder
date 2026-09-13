@@ -4,5 +4,6 @@
 # Only tools go in here. A block placed here would let a block reach a block, and
 # the rule that keeps the dependency graph acyclic falls.
 {
+  ids = import ./ids.nix;
   store = import ./store.nix { inherit pkgs; };
 }

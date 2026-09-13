@@ -1,19 +1,31 @@
 # Blocks — design
 
 Design only. No implementation. The endpoint set, the vocabulary and the laws this serves are
-`wip/plan-image-build.md`; nothing here restates them. Proposed code lives in
-`wip/blocks-poc/` and is referenced by path, never inlined.
+`wip/plan-image-build.md`; nothing here restates them. Proposed contracts are
+`docs/blocks/blocks-contracts.nix`, proposed code `docs/blocks/blocks-poc/` — referenced by
+path, never inlined.
 
 A block has a declared input, a declared output, its own tests, and keeps its implementation
 details inside. It does not import another block. Verified on `blocks/image` — see
-`wip/blocks-poc/blocks/image/`.
+`docs/blocks/blocks-poc/blocks/image/`.
+
+## Why blocks
+
+**A block tests every variant of its mechanism, so the mechanism is not what breaks.** A host can
+still be broken — it can declare parameters, or a combination of them, that do not go together —
+but that is one host failing on its own configuration while the world keeps working. Today it is
+the other way round: hosts are green and the world is broken, because what gets tested is a host's
+toplevel and not the machinery that has to deliver it. (aoj, 2026-09-13.)
+
+This is the reason the blocks are cut where they are cut. A test that needs a host cannot cover a
+matrix; a test that needs no host can.
 
 ## The blocks
 
 | block | in | out |
 |---|---|---|
 | `image` | a system, a format | the artifact, and the toplevel that went into it |
-| `install` | the host to install | a system that installs it |
+| `install` | a closure and how to place it | a system that installs it |
 | `store` | store paths, a shape | a filesystem holding them, with a valid nix DB |
 | `secrets` | files, a medium | a sidecar file |
 | `personalize` | a finished artifact, files | that artifact with its slot filled |
@@ -40,43 +52,61 @@ per architecture, loader entries, GPT type codes, partition sizes and offsets, f
 parameters, and which mechanism a given format is built by. `kexec` and `ipxe` are one payload
 with two loader descriptors — that is one branch inside the block, not two formats.
 
-Also inside: the artifact face of the slot — reserving it, formatting it, leaving it empty.
-
 ## install
 
 Wraps a host in an OS that unpacks it (aoj: *install je předvěsek pro image, obalí host install
-funkcí*). Its input is a system and its output is a system, so it sits **before** `image` and the
-`-install` half of the endpoint set is `image(install(host), format)` — the format does not know
-that it is packing an installer.
+funkcí*). Its output is a system, so it sits **before** `image`, and the `-install` half of the
+endpoint set is `image(install(host), format)` — the format does not know it is packing an
+installer.
+
+**Its input is a closure, not a system** (aoj, 2026-09-13). Measured against what the current
+installer actually consumes — a disk-preparation step, a mount step, the toplevel, the pool name,
+and where the key lands — that is five extracted values rather than a configuration. The
+difference is not in what the block can do; it is that a closure can be tested without a host and
+a configuration cannot. The block is deliberately asymmetric: derivations and strings in, a system
+out.
 
 Two things are in flight and they are different: the system being installed, and the system doing
-the installing. The block holds both; the caller states which host is to be installed.
-
-Inside: disk preparation, the install itself, what runs it at boot, and where the installed
-system's key lands on the target. The installer's own slot belongs to the artifact, so it is
-`image`'s (above).
+the installing. The block builds the second and carries the first.
 
 ## store
 
 Store paths in, a filesystem holding them out — with the nix database **registered**, not just
-the paths copied. Shape is `ext4` or `squashfs`.
+the paths copied. A store whose paths are present but unregistered answers "not valid" about a
+path in front of it, and anything copying a closure out of it refuses to start.
 
-This is a block rather than a detail of `image` because three consumers need the same thing and
-have each got it wrong separately: a disk image's root, a netboot/live squashfs, and the closure
-an offline installer carries. A store whose paths are present but unregistered answers "not
-valid" about a path in front of it, and anything copying a closure out of it refuses to start.
+The constraint that decides where this belongs: **registration is two different mechanisms, not
+one.**
 
-Open: whether this is its own block or lives inside `image`. It is the smallest piece with a
-test that has repeatedly been worth having, which argues for a block; it is also never asked for
-on its own, which argues against.
+| shape | where the database comes from |
+|---|---|
+| ext4 (writable) | loaded into the image at **build** time |
+| squashfs (read-only) | the image carries only the dump; it is loaded **at boot**, by a service |
+
+So the squashfs half is not a file — it is a file *plus a unit in the configuration of the system
+that runs from it*. A block that produces a file cannot supply the second half.
+
+Consumers, and who builds their store today:
+
+| consumer | shape | built by |
+|---|---|---|
+| a disk image's root | ext4 | this repo |
+| the in-memory appliance | squashfs | this repo |
+| a live ISO | squashfs | nixpkgs |
+| netboot (kexec / ipxe) | squashfs | nixpkgs |
+| the closure an offline installer carries | — | install |
+
+Open, with a recommendation: **not a block.** The ext4 branch is inside `image`; the squashfs
+branch is a pair whose second half belongs to the configuration of the system that boots it, and
+for ISO and netboot nixpkgs already owns both halves.
 
 ## secrets
 
-Files in, a sidecar out, named by the filesystem the consumer will mount. Nothing boots and there
-is no partition table.
+Files in, a sidecar out. Nothing boots and there is no partition table.
 
-`#image-secrets-json` does not fit that sentence — JSON is not a filesystem. Either the block's
-medium is "what the consumer reads", not "what it mounts", or json is not a sidecar. Open.
+A sidecar is data placed beside an image for the consumer to take. **Whether the consumer mounts
+it or reads it is a property of the medium, not part of what a sidecar is** (aoj, 2026-09-13), so
+`json` is a medium like `iso` and `vfat`.
 
 ## personalize
 
@@ -85,6 +115,35 @@ phase one is cacheable and secret-free, phase two must not be cached.
 
 Inside: how to find the slot in each format, and the refusals. A private key written to the wrong
 offset is not recoverable by noticing afterwards, so this block refuses rather than guesses.
+
+## The slot
+
+A slot has two faces — a place in the artifact, and a place the running system sees — and no
+single block owns both. `image` cannot own it outright: it does not know a host's storage
+topology and must not reach into it (aoj, 2026-09-13).
+
+**The rule (aoj, 2026-09-13): whoever owns the shape of the storage provides the slot.** Where
+there is an fs layout, the layout provides it. Where there is none — `iso` has no layout,
+`kexec` / `ipxe` have no filesystem at all — `image` provides it, because it is already making
+that shape.
+
+The rule is not enforced in general, and it does not need to be: **it is conditional on the host
+asking for it.** A host that declares no embedded delivery owes nothing. A host that declares one
+and has no slot is a host whose parameters do not go together — one host failing, not a broken
+mechanism, which is the distinction the whole design rests on.
+
+The check is the same wherever the slot came from — *is a slot available?* — which is the same
+shape as the pipe: the consumer validates what it received and does not care who produced it.
+
+There are **two checks and they cannot be merged**, because each catches a different failure:
+
+| who | when | catches |
+|---|---|---|
+| `image` | eval | the host asked for embedded and nobody declared a slot |
+| `personalize` | over the finished artifact | the slot is declared but is not in the artifact, or holds no filesystem |
+
+The first cannot catch a build that drifted from its declaration; the second cannot run at eval,
+because it works on a finished file.
 
 ## What the endpoints map to
 
@@ -103,8 +162,6 @@ of operation to artifact is in the plan and does not change here. No block knows
 
 ## Open
 
-1. `store` as a block, or inside `image`.
-2. `#image-secrets-json` against "named by the filesystem the consumer mounts".
-3. Who holds the slot descriptor. The plan gives it to the storage layout; `iso` has no layout,
-   and `kexec` / `ipxe` have no filesystem.
-4. Whether `install` takes the host as a system or as its closure.
+1. `store` as a block, or inside `image` — recommendation above, not decided.
+2. The slot's descriptor: what a layout states, and what `image` reads it from.
+3. Whether a validation gate is wanted beyond the two checks above, and where it sits.

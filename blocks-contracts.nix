@@ -1,10 +1,11 @@
 # Proposed contracts for the blocks described in wip/blocks-design.md.
 #
 # Interfaces only — every `out` is declared, none is implemented. `blocks/image` is left out
-# because it exists for real in wip/blocks-poc/blocks/image/block.nix; this file is the other
-# four, written in the same shape so they can be read side by side.
+# because it exists for real in docs/blocks/blocks-poc/blocks/image/block.nix; this file is the
+# other four, written in the same shape so they can be read side by side.
 #
-# The endpoint set these serve is wip/plan-image-build.md.
+# The design is docs/blocks/blocks-design.md. The endpoint set these serve is
+# wip/plan-image-build.md.
 
 { lib }:
 
@@ -30,14 +31,29 @@ in
   # install — wraps a host in an OS that unpacks it. system in, system out.
   ##########################################################################
   install = {
-    target = mkOption {
-      type = types.unspecified;
-      description = "The host to be installed. What a system is here is Open 4 in the design.";
+    toplevel = mkOption {
+      type = types.package;
+      description = "The system to be installed.";
+    };
+
+    closure = mkOption {
+      type = types.listOf types.package;
+      description = "What the installer carries, so it can install offline.";
+    };
+
+    prepare = mkOption {
+      type = types.package;
+      description = "Brings the target's storage into existence. The block does not know its shape.";
+    };
+
+    mount = mkOption {
+      type = types.package;
+      description = "Mounts that storage where the install writes.";
     };
 
     keyDestination = mkOption {
       type = types.str;
-      description = "Where the installed system's key lands on the target, once the target exists.";
+      description = "Where the installed system's key lands, once the target exists.";
     };
 
     out = mkOption {
@@ -102,9 +118,8 @@ in
     };
 
     medium = mkOption {
-      # "json" is Open 2 in the design: it is not a filesystem a consumer mounts.
-      type = types.enum [ "iso" "vfat" ];
-      description = "The filesystem the consumer will mount.";
+      type = types.enum [ "iso" "vfat" "json" ];
+      description = "How the consumer takes the data. Mounting is one way of taking it.";
     };
 
     out = mkOption {

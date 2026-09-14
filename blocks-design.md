@@ -3,9 +3,9 @@
 The design for the image / install / secrets factory, and for what deploy receives from it. It
 absorbs the decisions of `docs/plan-image-build.md` — vocabulary, laws, endpoint set, the two
 layers — so it reads standalone; the plan remains the record of MEASURED evidence, the withdrawn
-branch's algorithm inventory, and the step order. Proposed contracts are
-`docs/blocks/blocks-contracts.nix`, proposed code `docs/blocks/blocks-poc/` — referenced by path,
-never inlined.
+branch's algorithm inventory, and the step order. The contracts are each block's `block.nix`
+options — validated `evalModules` interfaces — and the code is `docs/blocks/blocks-poc/`;
+both are referenced by path, never inlined.
 
 **Provenance.** Everything marked DECIDED is something aoj stated, in aoj's own words where
 possible. Everything else is measured, labelled derived, or open. Nothing else gets to look like
@@ -186,7 +186,10 @@ Two consequences, derived in the plan and kept:
   (`EFI_OUT_OF_RESOURCES`, measured). The composer picks the shape because it knows which format
   it is asking for, and **`image` validates that the shape it was handed is legal for the format
   it was asked for** — a wrong composition fails at eval, in `image`, instead of at boot on the
-  machine.
+  machine. On the `-install` half the shape is the **wrapper's own** (its store carries the
+  installer and the host's closure); the target's storage never shapes it, which is why the L2
+  hole does not exist there — and why the composer names that hole itself, at eval, for the
+  runtime half of a zfs host.
 
 ## Tools
 
@@ -266,6 +269,13 @@ Inside, not in the caller: the EFI removable-media path per architecture, the bo
 per architecture, loader entries, GPT type codes, partition sizes and offsets, filesystem
 parameters, and which mechanism a given format is built by. `kexec` and `ipxe` are one payload
 with two loader descriptors — that is one branch inside the block, not two formats.
+
+How the formats are made, as built: `raw` / `qcow2` are the GPT assembly — ESP, store partition,
+optional slot partition; `qcow2` is the same disk in a different envelope. `iso` puts the kernel,
+initrd and loader entries INSIDE the ESP image, points an El Torito record at it, and marks the
+same image in a GPT so the file also boots dd'd to a stick (the nixpkgs pattern); the iso9660
+itself carries the squashfs store and the slot file. `kexec` / `ipxe` are one tree — kernel, the
+caller's initrd with the store cpio appended, and both loader descriptors.
 
 ## install
 
@@ -382,7 +392,8 @@ and nothing is copied until every check has passed:
 3. **the key belongs to this host** — its public half is a recipient of the host's own bundle.
    Planting another host's key otherwise surfaces as an undecryptable boot on a machine that may
    only have a serial console. A bundle the check cannot read is a named refusal, not a skipped
-   check: committed bundles are YAML on some hosts and JSON on others;
+   check: committed bundles are YAML on some hosts and JSON on others. The bundle and the key's
+   target arrive as the block's input (`recipientCheck`) — it cannot know the host's;
 4. **read back what landed**, out of the artifact, and re-derive the public half.
 
 ## The slot

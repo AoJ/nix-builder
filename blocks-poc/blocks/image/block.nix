@@ -114,19 +114,20 @@ in
         slackMiB = config.slot.sizeMiB;
       };
 
+      espImg = esp {
+        inherit (config) name system;
+        bootloader = bootEfi;
+        entries = [{
+          name = "nixos";
+          title = config.name;
+          inherit (config) kernel initrd kernelParams;
+        }];
+      };
+
       disk = tools.gptDisk {
         inherit (config) name;
         partitions = [
-          { fs = "vfat"; label = "ESP"; img = esp {
-              inherit (config) name system;
-              bootloader = bootEfi;
-              entries = [{
-                name = "nixos";
-                title = config.name;
-                inherit (config) kernel initrd kernelParams;
-              }];
-            };
-          }
+          { fs = "vfat"; label = "ESP"; img = espImg; }
           { fs = shape; label = "nixos"; img = store.img; }
         ] ++ lib.optional (config.slot != null) {
           fs = "vfat"; code = "8300"; label = config.slot.name; img = slotImg;
@@ -154,7 +155,8 @@ in
         };
         iso = {
           file = iso {
-            inherit (config) name kernel initrd kernelParams;
+            inherit (config) name;
+            inherit espImg;
             storeImg = store.img;
             extraFiles = lib.optional (config.slot != null) {
               path = slotFile;

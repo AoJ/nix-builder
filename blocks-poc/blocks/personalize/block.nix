@@ -23,6 +23,18 @@ in
       });
     };
 
+    recipientCheck = mkOption {
+      # The block cannot know the host's bundle; the caller hands it over, and the runner
+      # then refuses a key whose public half is not among the bundle's recipients.
+      type = types.nullOr (types.submodule {
+        options = {
+          bundle = mkOption { type = types.str; };
+          keyTarget = mkOption { type = types.strMatching "/.*"; };
+        };
+      });
+      default = null;
+    };
+
     out = mkOption {
       readOnly = true;
       type = types.submodule {
@@ -40,10 +52,17 @@ in
       manifest = pkgs.writeText "${config.name}-personalize-manifest"
         (lib.concatMapStrings (f: "${f.source}\t${f.target}\n") config.files);
 
+      recipientVars = ''
+        recipient_bundle=${lib.escapeShellArg (if config.recipientCheck == null then "" else config.recipientCheck.bundle)}
+        recipient_key_target=${lib.escapeShellArg (if config.recipientCheck == null then "" else config.recipientCheck.keyTarget)}
+      '';
+
       runner = script: vars: runtimeInputs: tools.bashTool {
         name = "personalize-${config.name}";
-        inherit runtimeInputs;
-        text = vars + builtins.readFile script;
+        runtimeInputs = runtimeInputs ++ [ pkgs.age pkgs.yq-go pkgs.gnugrep ];
+        text = vars + recipientVars
+          + builtins.readFile ./recipient-check.sh
+          + builtins.readFile script;
       };
     in
     {
@@ -59,6 +78,6 @@ in
 
       initrd-append = runner ./initrd-append.sh ''
         manifest=${manifest}
-      '' [ pkgs.coreutils pkgs.findutils pkgs.cpio pkgs.gnugrep ];
+      '' [ pkgs.coreutils pkgs.findutils pkgs.cpio ];
     }.${config.slot.medium};
 }

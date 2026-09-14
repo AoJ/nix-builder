@@ -19,8 +19,8 @@ host:
 
 let
   # Format is the FIRST decision: a live format packs the memory-rooted variant, which the
-  # composer evaluated — here it simply holds both. With real hosts this is the extendModules
-  # step, and it happens before anything enters a block.
+  # composer evaluated — here it simply holds both. With real hosts this is the
+  # extendModules step, and it happens before anything enters a block.
   variantFor = format:
     if builtins.elem format liveFormats then host.variants.live else host.variants.runtime;
 
@@ -32,34 +32,61 @@ let
   };
 
   # The store shape enters from above: the composer knows which format it is asking for.
-  # image validates the pick — see the block.
+  # image validates the pick — see the block. L2 makes one combination a NAMED hole: a zfs
+  # pool is created by the install, never by the image.
+  diskShape =
+    if host.variants.runtime.storage == "zfs"
+    then throw ("unsupported (L2): a zfs pool is created by the install, never by the image"
+      + " — use #image-<format>-install")
+    else host.variants.runtime.storage;
   storeShapeFor = format: {
     iso = "squashfs";
     kexec = "cpio";
     ipxe = "cpio";
-    raw = host.variants.runtime.storage;
-    qcow2 = host.variants.runtime.storage;
+    raw = diskShape;
+    qcow2 = diskShape;
   }.${format};
 
+  # The installer is an OS of its own, so its store is the WRAPPER's — the target's storage
+  # never shapes it. That is why the L2 hole does not exist on the -install half.
+  installerShapeFor = format: {
+    iso = "squashfs";
+    kexec = "cpio";
+    ipxe = "cpio";
+    raw = "ext4";
+    qcow2 = "ext4";
+  }.${format};
+
+  # A declared delivery must have a producer; a member nobody produces fails HERE, at eval,
+  # instead of leaving a host to boot without an identity.
+  producers = [ "embedded" "sidecar" ];
+  delivery =
+    let missing = lib.subtractLists producers host.secrets.delivery;
+    in
+    if missing == [ ]
+    then host.secrets.delivery
+    else throw "no producer for secrets.delivery ${builtins.toJSON missing}";
+
   # The extractor seam for the slot: today the slot is composed from the host's declared
-  # deliveries; a storage layout that owns a shape would be READ here, not consulted by a block.
+  # deliveries; a storage layout that owns a shape would be READ here, not consulted by a
+  # block.
   slotFor = _format:
-    if builtins.elem "embedded" host.secrets.delivery
+    if builtins.elem "embedded" delivery
     then { name = "secrets"; sizeMiB = 4; }
     else null;
 
-  imageFor = format: system: nameSuffix:
+  imageFor = format: shape: system: nameSuffix:
     image ({
       name = "${host.name}-${format}${nameSuffix}";
       inherit format;
       inherit (host) system;
-      storeShape = storeShapeFor format;
+      storeShape = shape;
       slot = slotFor format;
     } // extract system);
 
   runtimeEndpoints = lib.listToAttrs (map (f: {
     name = "image-${f}";
-    value = imageFor f (variantFor f) "";
+    value = imageFor f (storeShapeFor f) (variantFor f) "";
   }) formats);
 
   # What gets installed is ALWAYS the host as it runs; the format only shapes the wrapper.
@@ -74,24 +101,26 @@ let
 
   installEndpoints = lib.listToAttrs (map (f: {
     name = "image-${f}-install";
-    value = imageFor f installer "-install";
+    value = imageFor f (installerShapeFor f) installer "-install";
   }) formats);
+
+  sidecarFiles = map (f: { inherit (f) target source; }) host.secrets.files;
 in
 
 runtimeEndpoints // installEndpoints // {
   image-secrets-vfat = secrets {
     inherit (host) name;
-    files = map (f: { inherit (f) target source; }) host.secrets.files;
+    files = sidecarFiles;
     medium = "vfat";
   };
   image-secrets-iso = secrets {
     inherit (host) name;
-    files = map (f: { inherit (f) target source; }) host.secrets.files;
+    files = sidecarFiles;
     medium = "iso";
   };
   image-secrets-json = secrets {
     inherit (host) name;
-    files = map (f: { inherit (f) target source; }) host.secrets.files;
+    files = sidecarFiles;
     medium = "json";
   };
 
@@ -99,6 +128,10 @@ runtimeEndpoints // installEndpoints // {
     inherit (host) name;
     slot = runtimeEndpoints.image-raw.slot;
     files = map (f: { inherit (f) target; source = f.runtimeSource; }) host.secrets.files;
+    recipientCheck =
+      if host.secrets ? bundle
+      then { inherit (host.secrets) bundle keyTarget; }
+      else null;
   };
 
   # Names for what a block already returned — lookups, never a second evaluation.

@@ -74,6 +74,24 @@ let
         -N "$inodes" -U ${lib.escapeShellArg uuid} -d "$staged" -F "$out" "$blocks"
     '';
 
+  # The netboot shape: the store rides in the initrd as an appended cpio segment. The paths
+  # land on the initramfs tmpfs (writable), but the database still boots empty — so the archive
+  # carries the dump at the same constant path, and the same kind of unit loads it.
+  cpio = pkgs.runCommand "store.cpio"
+    { nativeBuildInputs = [ pkgs.cpio pkgs.coreutils pkgs.findutils ]; }
+    ''
+      set -euo pipefail
+      staged="$(mktemp -d)"
+      mkdir -p "$staged/nix/store"
+      while IFS= read -r p; do
+        cp -a --reflink=auto "$p" "$staged/nix/store/"
+      done < ${closure}/store-paths
+      cp ${closure}/registration "$staged/nix/store/nix-path-registration"
+      find "$staged" -exec touch -h -d @1 {} +
+      (cd "$staged" && find . -mindepth 1 | sort \
+        | cpio -o -H newc -R +0:+0 --reproducible --quiet) > "$out"
+    '';
+
   squashfs = pkgs.runCommand "store-squashfs.img"
     { nativeBuildInputs = [ pkgs.squashfsTools pkgs.coreutils ]; }
     ''
@@ -88,9 +106,9 @@ let
     '';
 in
 {
-  img = if shape == "ext4" then ext4 else squashfs;
+  img = { inherit ext4 squashfs cpio; }.${shape};
   fs = shape;
   registered = true;
-  needsBootUnit = shape == "squashfs";
+  needsBootUnit = shape != "ext4";
   inherit registrationPath uuid;
 }

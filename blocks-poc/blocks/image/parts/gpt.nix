@@ -15,7 +15,7 @@ pkgs.runCommand "${name}.img"
     set -euo pipefail
     labels=(${quoted (p: p.label)})
     fstypes=(${quoted (p: p.fs)})
-    codes=(${quoted (p: typeCode.${p.fs})})
+    codes=(${quoted (p: p.code or typeCode.${p.fs})})
     # Passed in, never generated: sgdisk randomises both the disk guid and every partition guid,
     # so two builds of one image would differ for no reason anyone can see.
     guids=(${quoted (p: ids.uuid "${name}:part:${p.label}")})

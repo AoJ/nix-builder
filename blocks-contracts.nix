@@ -1,11 +1,10 @@
-# Proposed contracts for the blocks described in wip/blocks-design.md.
+# Proposed contracts for the blocks described in docs/blocks/blocks-design.md.
 #
-# Interfaces only — every `out` is declared, none is implemented. `blocks/image` is left out
-# because it exists for real in docs/blocks/blocks-poc/blocks/image/block.nix; this file is the
-# other four, written in the same shape so they can be read side by side.
+# Interfaces only, written in one shape so they can be read side by side. Every block here now
+# exists for real under docs/blocks/blocks-poc/ — the PoC's block.nix files are the living
+# copies, and where the two drift the PoC is the one that was tested.
 #
-# The design is docs/blocks/blocks-design.md. The endpoint set these serve is
-# wip/plan-image-build.md.
+# The design, including the endpoint set these serve, is docs/blocks/blocks-design.md.
 
 { lib }:
 

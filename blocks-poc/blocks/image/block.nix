@@ -29,8 +29,10 @@ in
       description = "The toplevel being packed. Handed through, so #closure-live is a lookup.";
     };
 
-    kernel = mkOption { type = types.package; };
-    initrd = mkOption { type = types.package; };
+    # Paths, not packages: the extraction hands over `${toplevel}/kernel` — a store SUBPATH
+    # with context, which is a file, not a derivation.
+    kernel = mkOption { type = types.path; };
+    initrd = mkOption { type = types.path; };
 
     kernelParams = mkOption {
       type = types.listOf types.str;

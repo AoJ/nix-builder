@@ -17,4 +17,5 @@ in
   e2e-memory-boot = import ./e2e-memory-boot.nix { inherit pkgs compose hosts; };
   e2e-personalize-boot = import ./e2e-personalize-boot.nix { inherit pkgs compose hosts; };
   e2e-install-cycle = import ./e2e-install-cycle.nix { inherit pkgs compose hosts; };
+  e2e-live-iso = import ./e2e-live-iso.nix { inherit pkgs compose hosts; };
 }

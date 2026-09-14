@@ -9,15 +9,22 @@
     path = [ pkgs.age pkgs.coreutils pkgs.util-linux pkgs.systemd ];
     script = ''
       echo "E2E-BOOT-OK $(cat /proc/sys/kernel/hostname)" > /dev/console
+      report_slot() {
+        if [ -s /run/slot/sops.age ]; then
+          echo "E2E-KEY $(age-keygen -y /run/slot/sops.age)" > /dev/console
+        else
+          echo "E2E-KEY-EMPTY" > /dev/console
+        fi
+      }
+      mkdir -p /run/slot
       slot=/dev/disk/by-partlabel/secrets
       if [ -e "$slot" ]; then
-        mkdir -p /run/slot
         if mount -o ro "$slot" /run/slot 2>/dev/null; then
-          if [ -s /run/slot/sops.age ]; then
-            echo "E2E-KEY $(age-keygen -y /run/slot/sops.age)" > /dev/console
-          else
-            echo "E2E-KEY-EMPTY" > /dev/console
-          fi
+          report_slot
+        fi
+      elif [ -e /iso/boot/secrets.img ]; then
+        if mount -o ro,loop /iso/boot/secrets.img /run/slot 2>/dev/null; then
+          report_slot
         fi
       fi
       if [ -s /var/lib/sops/age.key ]; then

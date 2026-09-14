@@ -181,7 +181,10 @@ Two consequences, derived in the plan and kept:
   and the variant is a configuration change — so the composer evaluates it before anything enters
   a block, and the extraction sits between the evaluated system and `image`. The pipe's carrier
   changes shape exactly once, at that extraction, and the extraction is written explicitly rather
-  than smuggled into a block.
+  than smuggled into a block. The iso variant additionally carries the MEDIUM's runtime face —
+  mount the iso9660 by label, loop-mount the squashfs store out of it — and the label is the one
+  constant spanning eval and artifact: both sides derive it from the same name through the same
+  `ids` tool, and the e2e boot is what tests the agreement.
 - **The store shape enters from above** (DECIDED). `kexec` / `ipxe` need the store in the initrd
   — there is no disk; `raw` / `qcow2` need a partition — an EFI stub refuses a 1.3 GiB initrd
   (`EFI_OUT_OF_RESOURCES`, measured). The composer picks the shape because it knows which format
@@ -360,9 +363,11 @@ runs between the tool and the module.
 What remains a real agreement is that constant, spanning build time and boot — so it is asserted
 in the tool's own test rather than left to hold by habit.
 
-Status: nixpkgs supplies both halves for the live ISO and for netboot. For the appliance, the
-withdrawn branch has the unit and **`dev` has none at all** — a real gap, not a design question,
-and the implementation already exists to carry over.
+Status: the gap is closed on the blocks path — `docs/blocks/tests/hosts/modules/` carries both
+halves for every shape that boots: `read-only-store.nix` (the squashfs partition mount and its
+registration, the appliance case), `live-iso.nix` (the medium by label, the loop-mounted store,
+the same registration), and the netboot registration rides the live module. What remains is
+carrying these into the repo's module tree at integration.
 
 ## secrets
 
@@ -468,6 +473,16 @@ hole — a hole answers no question about whether the offset is right, and a pri
 the wrong offset is not recoverable by noticing afterwards. So `image` reserves the slot, formats
 it, and leaves it empty: empty is what keeps phase one cacheable and secret-free, formatted is
 what lets phase two refuse.
+
+## What integration deletes
+
+The blocks path uses no nixos-generators and no iso-image module anywhere — `#image-iso` is the
+block's own xorriso assembly and `live-iso.nix` is its runtime face. At integration the
+`nixos-generators` flake input therefore dies together with its three consumers —
+`lib/40_build/image/installerIso.nix`, `lib/40_build/image/guestIso.nix`, and the
+`mkHost/images.nix` wiring — and the deprecation warning with them. Until then the old path
+stays untouched; killing the warning early would mean changing the code that is about to be
+deleted.
 
 ## What deploy is left with
 

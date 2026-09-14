@@ -19,10 +19,15 @@ host:
 
 let
   # Format is the FIRST decision: a live format packs the memory-rooted variant, which the
-  # composer evaluated — here it simply holds both. With real hosts this is the
-  # extendModules step, and it happens before anything enters a block.
+  # composer evaluated — with real hosts this is the extendModules step, and it happens
+  # before anything enters a block. The iso variant additionally carries the medium's
+  # runtime face, keyed by the LABEL — derived from the same name through the same ids
+  # tool the image block uses, which is the agreement point (the e2e boot is its test).
+  isoLabel = lib.toUpper (tools.ids.volumeId "${host.name}-iso:iso");
   variantFor = format:
-    if builtins.elem format liveFormats then host.variants.live else host.variants.runtime;
+    if format == "iso" && host.variants ? liveIso then host.variants.liveIso isoLabel
+    else if builtins.elem format liveFormats then host.variants.live
+    else host.variants.runtime;
 
   # The extraction: the one point where the pipe's carrier changes shape. Written out so it
   # stays visible — and small.
@@ -132,6 +137,17 @@ runtimeEndpoints // installEndpoints // {
       if host.variants.runtime.storage == "zfs"
       then installEndpoints.image-raw-install.slot
       else runtimeEndpoints.image-raw.slot;
+    files = map (f: { inherit (f) target; source = f.runtimeSource; }) host.secrets.files;
+    recipientCheck =
+      if host.secrets ? bundle
+      then { inherit (host.secrets) bundle keyTarget; }
+      else null;
+  };
+  # The same phase 2, bound to the iso artifact's slot — a FILE, found by report_lba. One
+  # endpoint, one runner per artifact family the caller holds.
+  image-personalize-iso = personalize {
+    name = "${host.name}-iso";
+    slot = runtimeEndpoints.image-iso.slot;
     files = map (f: { inherit (f) target; source = f.runtimeSource; }) host.secrets.files;
     recipientCheck =
       if host.secrets ? bundle

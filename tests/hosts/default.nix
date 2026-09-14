@@ -88,6 +88,11 @@ let
       variants = {
         runtime = extract runtime // { inherit storage; };
         live = extract live;
+        # The iso's runtime face needs the medium's LABEL, which only the composer knows —
+        # so this variant is a function the composer applies.
+        liveIso = label: extract (runtime.extendModules {
+          modules = [ (import ./modules/live-iso.nix { inherit label; }) ];
+        });
       };
       inherit install;
     };

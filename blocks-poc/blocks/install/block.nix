@@ -2,15 +2,15 @@
 
 let
   inherit (lib) mkOption types;
-
-  # The installing OS is the BLOCK's, not the caller's: the caller hands over what to install
-  # and how to place it, never what installs it. Synthetic here — the shape is the point.
-  installerKernel = pkgs.writeText "installer-kernel" "the installer OS's kernel";
-  installerInitrd = pkgs.writeText "installer-initrd" "the installer OS's initrd";
 in
 {
   options = {
     name = mkOption { type = types.strMatching "[a-z0-9][a-z0-9-]*"; };
+
+    system = mkOption {
+      type = types.enum [ "x86_64-linux" "aarch64-linux" ];
+      description = "Architecture the installer runs on — the target's, since it installs offline.";
+    };
 
     toplevel = mkOption {
       type = types.package;
@@ -24,12 +24,17 @@ in
 
     prepare = mkOption {
       type = types.package;
-      description = "Brings the target's storage into existence. The block does not know its shape.";
+      description = "Brings the target's storage into existence AND mounts it at /mnt. The block does not know its shape.";
     };
 
     mount = mkOption {
       type = types.package;
-      description = "Mounts that storage where the install writes.";
+      description = "Mounts that storage at /mnt when it already exists — the never-reformat path.";
+    };
+
+    pool = mkOption {
+      type = types.str;
+      description = "The pool the install action probes and cleanly exports.";
     };
 
     keyDestination = mkOption {
@@ -47,8 +52,8 @@ in
             type = types.submodule {
               options = {
                 toplevel = mkOption { type = types.package; };
-                kernel = mkOption { type = types.package; };
-                initrd = mkOption { type = types.package; };
+                kernel = mkOption { type = types.path; };
+                initrd = mkOption { type = types.path; };
                 kernelParams = mkOption { type = types.listOf types.str; };
                 storePaths = mkOption { type = types.listOf types.package; };
               };
@@ -61,22 +66,22 @@ in
 
   config.out.system =
     let
-      run = tools.bashTool {
-        name = "install-${config.name}";
-        runtimeInputs = [ pkgs.coreutils ];
-        text = ''
-          prepare=${config.prepare}
-          mount_cmd=${config.mount}
-          toplevel=${config.toplevel}
-          key_destination=${lib.escapeShellArg config.keyDestination}
-        '' + builtins.readFile ./install.sh;
+      installer = import (pkgs.path + "/nixos/lib/eval-config.nix") {
+        inherit (config) system;
+        modules = [
+          (import ./installer-profile.nix {
+            inherit (config) name prepare mount toplevel pool keyDestination;
+            inherit (tools) niximilateInstall;
+          })
+        ];
       };
+      toplevel = installer.config.system.build.toplevel;
     in
     {
-      toplevel = run;
-      kernel = installerKernel;
-      initrd = installerInitrd;
-      kernelParams = [ "installer=${config.name}" ];
-      storePaths = [ run ] ++ config.closure;
+      inherit toplevel;
+      kernel = "${toplevel}/kernel";
+      initrd = "${toplevel}/initrd";
+      kernelParams = installer.config.boot.kernelParams ++ [ "init=${toplevel}/init" ];
+      storePaths = [ toplevel ] ++ config.closure;
     };
 }

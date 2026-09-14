@@ -82,7 +82,7 @@ let
        count=$(( (root_len + 1048575) / 1048576 )) status=none
     ${if c.shape == "ext4" then ''
       dumpe2fs -h part.img > /dev/null 2>&1
-      debugfs -R "ls /nix/store" part.img | tr ' ' '\n' | grep -q hello
+      debugfs -R "ls /nix/store" part.img | tr ' ' '\n' | grep hello > /dev/null
     '' else ''
       unsquashfs -l part.img | grep -q hello
       unsquashfs -l part.img | grep -q nix-path-registration

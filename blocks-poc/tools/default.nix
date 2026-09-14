@@ -13,4 +13,8 @@ in
   fatImage = import ./fat-image.nix { inherit pkgs bashTool; };
   gptDisk = import ./gpt-disk.nix { inherit pkgs bashTool ids; };
   store = import ./store.nix { inherit pkgs bashTool; };
+  # The repo's ONE tested install action (disko-or-import -> place key -> nixos-install ->
+  # clean export), consumed from its single source — no copy. The install block's installer
+  # OS runs it; nothing reimplements the flow.
+  niximilateInstall = import ../../../../lib/50_install/niximilateInstallApp.nix pkgs;
 }

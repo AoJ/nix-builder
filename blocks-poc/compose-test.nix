@@ -37,6 +37,7 @@ let
     install = {
       prepare = pkgs.writeShellScript "prepare" "sgdisk --zap-all /dev/target";
       mount = pkgs.writeShellScript "mount" "mount /dev/target-root \"$1\"";
+      pool = "rpool";
       keyDestination = "/var/lib/sops/age.key";
     };
   };
@@ -93,7 +94,7 @@ pkgs.runCommand "test-compose"
     dd if=${e.image-raw-install.file} of=root.img bs=1M \
        skip=$(( root_off / 1048576 )) count=$(( (root_len + 1048575) / 1048576 )) status=none
     debugfs -R "ls /nix/store" root.img | tr ' ' '\n' \
-      | grep -q "$(basename ${host.variants.runtime.toplevel})"
+      | grep "$(basename ${host.variants.runtime.toplevel})" > /dev/null
 
     echo "== the netboot install rides the initrd, because the composer picked cpio =="
     [ -e ${e.image-kexec-install.file}/kexec.sh ]

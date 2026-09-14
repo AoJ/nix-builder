@@ -90,13 +90,13 @@ let
   }) formats);
 
   # What gets installed is ALWAYS the host as it runs; the format only shapes the wrapper.
-  # The installing OS is the block's own — live-shaped by construction.
+  # The installing OS is the block's own.
   installer =
     (install {
-      inherit (host) name;
+      inherit (host) name system;
       toplevel = host.variants.runtime.toplevel;
       closure = [ host.variants.runtime.toplevel ];
-      inherit (host.install) prepare mount keyDestination;
+      inherit (host.install) prepare mount pool keyDestination;
     }).system;
 
   installEndpoints = lib.listToAttrs (map (f: {
@@ -126,7 +126,12 @@ runtimeEndpoints // installEndpoints // {
 
   image-personalize = personalize {
     inherit (host) name;
-    slot = runtimeEndpoints.image-raw.slot;
+    # Bound to the host's DELIVERABLE: for a zfs host that is the -install artifact (L2 —
+    # the runtime disk endpoints are the hole), for everyone else the runtime image.
+    slot =
+      if host.variants.runtime.storage == "zfs"
+      then installEndpoints.image-raw-install.slot
+      else runtimeEndpoints.image-raw.slot;
     files = map (f: { inherit (f) target; source = f.runtimeSource; }) host.secrets.files;
     recipientCheck =
       if host.secrets ? bundle

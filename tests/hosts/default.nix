@@ -17,7 +17,42 @@ let
   syntheticInstall = {
     prepare = pkgs.writeShellScript "prepare" "sgdisk --zap-all /dev/target";
     mount = pkgs.writeShellScript "mount" "mount /dev/target-root \"$1\"";
+    pool = "rpool";
     keyDestination = "/var/lib/sops/age.key";
+  };
+
+  # The zfs host's REAL extracted install values: its disk-preparation creates the pool
+  # (and mounts it — the diskoScript role), its mount handles the already-present pool
+  # (the never-reformat path). The target disk is named here because these values are the
+  # host's own; nothing generic knows it.
+  zfsInstall = {
+    pool = "rpool";
+    keyDestination = "/var/lib/sops/age.key";
+    # Runs under the install action's PATH (nix, zfs, util-linux, coreutils); anything
+    # outside that set is spelled absolutely.
+    prepare = pkgs.writeShellScript "prepare-zfs" ''
+      set -euo pipefail
+      disk=/dev/vdb
+      ${pkgs.gptfdisk}/bin/sgdisk -Z "$disk"
+      ${pkgs.gptfdisk}/bin/sgdisk -n 1:0:+512M -t 1:ef00 -c 1:ESP "$disk"
+      ${pkgs.gptfdisk}/bin/sgdisk -n 2:0:0 -t 2:bf01 -c 2:zfs "$disk"
+      ${pkgs.systemd}/bin/udevadm settle
+      ${pkgs.dosfstools}/bin/mkfs.fat -F 32 -n ESP "''${disk}1"
+      zpool create -f -o ashift=12 -O mountpoint=none -O compression=on rpool "''${disk}2"
+      zfs create -o mountpoint=legacy rpool/root
+      mkdir -p /mnt
+      mount -t zfs rpool/root /mnt
+      mkdir -p /mnt/boot
+      mount "''${disk}1" /mnt/boot
+    '';
+    mount = pkgs.writeShellScript "mount-zfs" ''
+      set -euo pipefail
+      zpool import rpool
+      mkdir -p /mnt
+      mount -t zfs rpool/root /mnt
+      mkdir -p /mnt/boot
+      mount /dev/vdb1 /mnt/boot
+    '';
   };
 
   noSecrets = {
@@ -36,7 +71,7 @@ let
     }];
   };
 
-  mk = { name, modules, storage, secrets }:
+  mk = { name, modules, storage, secrets, install ? syntheticInstall }:
     let
       runtime = evalHost ([
         ./modules/base.nix
@@ -54,7 +89,7 @@ let
         runtime = extract runtime // { inherit storage; };
         live = extract live;
       };
-      install = syntheticInstall;
+      inherit install;
     };
 in
 {
@@ -79,6 +114,7 @@ in
     modules = [ ./modules/disk-zfs.nix ];
     storage = "zfs";
     secrets = withSecrets;
+    install = zfsInstall;
   };
 
   plain = mk {

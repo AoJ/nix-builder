@@ -302,6 +302,18 @@ installer's OWN slot — where the install-time key is read from, `image`'s inpu
 installer is packed — and the place the installed host's key lands on the target it just created,
 which is this block's `keyDestination` input. The contract keeps them apart.
 
+**The install ACT is `niximilate-install`, reached as a tool** — the repo's one tested action
+(import-or-create, never-reformat, key placement, nixos-install, clean pool export), consumed
+from its single source in `lib/50_install/` through the privileged tools assembly. Nothing is
+copied and nothing reimplements the flow; the block's installer OS is a minimal system of the
+block's own whose one service runs that action against the six inputs (`prepare` doubles as the
+diskoScript role — it creates AND mounts; `mount` is the never-reformat path). The installer's
+slot feeds the action's delivered-key convention (`/run/niximilate-sops.age`), so phase 2 on an
+`-install` artifact is the same personalize as everywhere else.
+
+The action is pool-centric — that is its home turf and exactly the L2 case. A non-zfs install
+target is not covered by it today; the hole is named in Open, not papered over.
+
 ## store — a tool, inside image
 
 Store paths in, a filesystem holding them out — with the nix database **registered**, not just the
@@ -505,3 +517,10 @@ the design, not the test author's taste.
 3. What belongs in `tools` besides the bash tooling and the store.
 4. The self-install RAM bound wants an eval-time assertion: closure size against the tmpfs cap —
    a live ISO's `/` and `/nix/.rw-store` each default to 50% of RAM and share the same pages.
+5. The installer OS is disk-rooted (the raw/qcow2 wrapper); the iso/kexec wrappers need its
+   memory-rooted variant — the live-variant story applied to the installer.
+6. A non-zfs install target: `niximilate-install` is pool-centric (probe, export, the pool
+   argument), so an ext4 target has no install path yet.
+7. Encrypted-pool install: the passphrase delivery at install time (the action's
+   `/tmp/zfs_root_key` convention) — the e2e installs an unencrypted pool; L3's real case still
+   needs the passphrase channel composed.

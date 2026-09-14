@@ -11,6 +11,5 @@
   boot.kernelParams = [ "console=ttyS0" ];
   networking.useDHCP = false;
   nix.enable = false;
-  system.switch.enable = false;
   users.allowNoPasswordLogin = true;
 }

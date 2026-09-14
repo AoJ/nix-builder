@@ -1,5 +1,6 @@
 # The e2e witness: prints what a booted system can PROVE onto the serial console — that
-# userspace came up, and what the slot holds — then powers off so qemu exits on its own.
+# userspace came up, what the slot holds, and what an install landed at the key's
+# destination — then powers off so qemu exits on its own.
 { pkgs, ... }:
 {
   systemd.services.e2e-marker = {
@@ -18,6 +19,9 @@
             echo "E2E-KEY-EMPTY" > /dev/console
           fi
         fi
+      fi
+      if [ -s /var/lib/sops/age.key ]; then
+        echo "E2E-INSTALLED-KEY $(age-keygen -y /var/lib/sops/age.key)" > /dev/console
       fi
       systemctl poweroff --no-block
     '';

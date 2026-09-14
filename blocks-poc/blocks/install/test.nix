@@ -5,14 +5,16 @@ let
   install = import ./default.nix { inherit pkgs tools; };
   image = import ../image/default.nix { inherit pkgs tools; };
 
-  # Assembled BY HAND: five extracted values, not a configuration.
+  # Assembled BY HAND: the extracted values, not a configuration.
   target = pkgs.writeText "target-toplevel" "the system being installed";
   handed = install {
     name = "fixture";
+    system = "x86_64-linux";
     toplevel = target;
     closure = [ target pkgs.hello ];
     prepare = pkgs.writeShellScript "prepare" "sgdisk --zap-all /dev/target";
-    mount = pkgs.writeShellScript "mount" "mount /dev/target-root \"$1\"";
+    mount = pkgs.writeShellScript "mount" "zpool import rpool && mount -t zfs rpool/root /mnt";
+    pool = "rpool";
     keyDestination = "/var/lib/sops/age.key";
   };
 
@@ -29,24 +31,30 @@ assert lib.assertMsg (builtins.elem target handed.system.storePaths)
   "the installer must CARRY the system it installs — offline is the point";
 
 pkgs.runCommand "test-install"
-  { nativeBuildInputs = [ pkgs.gptfdisk pkgs.e2fsprogs pkgs.jq pkgs.coreutils ]; }
+  { nativeBuildInputs = [ pkgs.gptfdisk pkgs.e2fsprogs pkgs.jq pkgs.coreutils pkgs.gnugrep ]; }
   ''
     set -euo pipefail
 
-    echo "== the installer runs the caller's steps against the caller's destination =="
-    script=${handed.system.toplevel}/bin/install-fixture
-    grep -q 'prepare' "$script"
-    grep -q 'mount' "$script"
-    grep -q '/var/lib/sops/age.key' "$script"
-    grep -q ${target} "$script"
+    echo "== the installer is a real OS whose service runs the ONE tested install action =="
+    unit=${handed.system.toplevel}/etc/systemd/system/niximilate-install.service
+    [ -e "$unit" ]
+    starter="$(grep -oP 'ExecStart=\K\S+' "$unit")"
+    grep -q 'niximilate-install' "$starter"
+    grep -q 'prepare' "$starter"
+    grep -q 'rpool' "$starter"
+    grep -q '/var/lib/sops/age.key' "$starter"
+    grep -q ${target} "$starter"
+
+    echo "== the installer's own slot feeds the install-time key to the action =="
+    [ -e ${handed.system.toplevel}/etc/systemd/system/slot-key.service ]
 
     echo "== packed as an ordinary image, the artifact carries the carried closure =="
     root_off="$(jq -r '.[] | select(.label=="nixos") | .startByte' ${packed.layout})"
     root_len="$(jq -r '.[] | select(.label=="nixos") | .sizeByte' ${packed.layout})"
     dd if=${packed.file} of=root.img bs=1M \
-       skip=$(( root_off / 1048576 )) count=$(( root_len / 1048576 )) status=none
-    debugfs -R "ls /nix/store" root.img | tr ' ' '\n' | grep -q "$(basename ${target})"
-    debugfs -R "ls /nix/store" root.img | tr ' ' '\n' | grep -q hello
+       skip=$(( root_off / 1048576 )) count=$(( (root_len + 1048575) / 1048576 )) status=none
+    debugfs -R "ls /nix/store" root.img | tr ' ' '\n' | grep "$(basename ${target})" > /dev/null
+    debugfs -R "ls /nix/store" root.img | tr ' ' '\n' | grep hello > /dev/null
 
     touch $out
   ''

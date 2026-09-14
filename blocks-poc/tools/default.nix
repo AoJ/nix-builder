@@ -1,9 +1,16 @@
 { pkgs }:
 
-# The one privileged place: it assembles the tool set that every block is handed.
-# Only tools go in here. A block placed here would let a block reach a block, and
-# the rule that keeps the dependency graph acyclic falls.
-{
+# The one privileged place: it assembles the tool set that every block is handed, and it is
+# the only spot in the PoC that reaches into the repo's shared lib (mkBashTool + the bash
+# helper lib it prepends). Only tools go in here. A block placed here would let a block
+# reach a block, and the rule that keeps the dependency graph acyclic falls.
+let
+  bashTool = args: (import ../../../../lib/core/bashTool.nix) ({ inherit pkgs; } // args);
   ids = import ./ids.nix;
-  store = import ./store.nix { inherit pkgs; };
+in
+{
+  inherit bashTool ids;
+  fatImage = import ./fat-image.nix { inherit pkgs bashTool; };
+  gptDisk = import ./gpt-disk.nix { inherit pkgs bashTool ids; };
+  store = import ./store.nix { inherit pkgs bashTool; };
 }

@@ -75,7 +75,7 @@ pkgs.runCommand "test-compose"
 
     echo "== phase 2 composes against what image RETURNED, and the key lands =="
     install -m 0644 ${e.image-raw.file} work.img
-    ${e.image-personalize.run} work.img
+    ${lib.getExe e.image-personalize.run} work.img
     off="$(jq -r '.[] | select(.label=="secrets") | .startByte' ${e.image-raw.layout})"
     mcopy -i work.img@@"$off" ::/sops.age got
     cmp got ${fixtureKey}

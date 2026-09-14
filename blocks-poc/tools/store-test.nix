@@ -1,11 +1,15 @@
-{ pkgs }:
+{ pkgs, tools }:
 
 let
-  store = import ./store.nix { inherit pkgs; };
+  store = tools.store;
 
   asExt4 = store { name = "fixture"; rootPaths = [ pkgs.hello ]; shape = "ext4"; label = "nixos"; };
   asSquash = store { name = "fixture"; rootPaths = [ pkgs.hello ]; shape = "squashfs"; label = "nixos"; };
   asCpio = store { name = "fixture"; rootPaths = [ pkgs.hello ]; shape = "cpio"; label = "nixos"; };
+  asRoot = store {
+    name = "fixture"; rootPaths = [ pkgs.hello ]; shape = "ext4"; label = "nixos";
+    profile = pkgs.hello;
+  };
 
   # Same builder, same inputs, a different derivation — so nix really builds it a second time.
   # Two builds of ONE derivation are the same store path, which is why nix cannot notice a
@@ -29,6 +33,11 @@ pkgs.runCommand "test-store"
 
     echo "== and that path is the one the tool declares, not one restated here =="
     [ ${builtins.toJSON asSquash.registrationPath} = /nix/store/nix-path-registration ]
+
+    echo "== a profile makes ext4 a bootable ROOT: generation link, etc/NIXOS; bare stays bare =="
+    debugfs -R "ls /nix/var/nix/profiles" ${asRoot.img} 2>/dev/null | grep -q 'system-1-link'
+    debugfs -R "stat /etc/NIXOS" ${asRoot.img} > /dev/null 2>&1
+    ! debugfs -R "stat /etc" ${asExt4.img} > /dev/null 2>&1
 
     echo "== cpio rides in an initrd, and it too carries the dump at the same constant =="
     cpio -t --quiet < ${asCpio.img} | grep -q 'nix/store/nix-path-registration'

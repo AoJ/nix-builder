@@ -217,7 +217,13 @@ block's own directory is an error.** No detection of cross-calls is needed, beca
 nothing to reach another block with.
 
 The cost: one place assembles `tools`, and it is the only privileged place in the structure. Only
-tools may go in it. A block placed there would let a block reach a block, and the rule falls.
+tools may go in it. A block placed there would let a block reach a block, and the rule falls. It
+is also the one spot that reaches into the repo's shared lib: `mkBashTool` (and the bash helper
+lib it prepends) enters here, so every tool script is shellcheck-gated at build.
+
+The set as the PoC stands: `bashTool` (mkBashTool bound to `pkgs`), `ids` (identity from a name),
+`fatImage` (manifest → FAT filesystem — the ESP, the slot, and the vfat sidecar are one
+mechanism), `gptDisk` (partition images → GPT disk, layout emitted as JSON), `store` (below).
 
 ## Reproducibility and identity
 
@@ -302,6 +308,12 @@ does — the store is at `/nix/store`, the database at `/nix/var/nix/db`:
 | ext4 (writable) | both live on one writable filesystem, so the database is written **at build time** and the image carries it |
 | squashfs (read-only) | the image is mounted read-only at `/nix/store`, and the database's place is a tmpfs that boots empty — so the image carries only a dump, and a **unit loads it at every boot** |
 | cpio (netboot) | the paths land on the initramfs tmpfs, but the database still boots empty — the archive carries the dump at the same constant path, and the same kind of unit loads it |
+
+With a `profile` toplevel the ext4 shape is a bootable NixOS ROOT, not just a store filesystem:
+generation link + `system` profile symlink (what `systemd-boot-builder` reads on the first
+switch), `/etc/NIXOS`, and the FHS mount points. Without one it stays a bare store. The
+distinction is the tool's, not the caller's to assemble: both halves sit on one writable
+filesystem or neither does.
 
 ### The unit is not the block's, and not the chain's
 

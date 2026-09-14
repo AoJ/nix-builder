@@ -39,19 +39,13 @@ in
         cp ${f.source} "$staged"${lib.escapeShellArg f.target}
       '') config.files;
 
-      vfat = pkgs.runCommand "${config.name}-sidecar.img"
-        { nativeBuildInputs = [ pkgs.dosfstools pkgs.mtools pkgs.coreutils pkgs.findutils ]; }
-        ''
-          set -euo pipefail
-          staged="$(mktemp -d)"
-          ${staged}
-          truncate -s 4M "$out"
-          mkfs.fat -n SECRETS -i ${lib.escapeShellArg (tools.ids.volumeId "${config.name}:sidecar")} "$out"
-          (cd "$staged" && find . -mindepth 1 -type d -printf '%P\n' | sort \
-            | while IFS= read -r d; do mmd -i "$out" "::/$d"; done)
-          (cd "$staged" && find . -mindepth 1 -type f -printf '%P\n' | sort \
-            | while IFS= read -r f; do mcopy -i "$out" "$f" "::/$f"; done)
-        '';
+      vfat = tools.fatImage {
+        inherit (config) name;
+        label = "SECRETS";
+        volumeId = tools.ids.volumeId "${config.name}:sidecar";
+        files = map (f: { source = "${f.source}"; inherit (f) target; }) config.files;
+        slackMiB = 4;
+      };
 
       isoFile = pkgs.runCommand "${config.name}-sidecar.iso"
         { nativeBuildInputs = [ pkgs.xorriso pkgs.coreutils ]; }

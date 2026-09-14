@@ -34,7 +34,7 @@ pkgs.runCommand "test-install"
     set -euo pipefail
 
     echo "== the installer runs the caller's steps against the caller's destination =="
-    script=${handed.system.toplevel}
+    script=${handed.system.toplevel}/bin/install-fixture
     grep -q 'prepare' "$script"
     grep -q 'mount' "$script"
     grep -q '/var/lib/sops/age.key' "$script"

@@ -61,14 +61,16 @@ in
 
   config.out.system =
     let
-      run = pkgs.writeShellScript "install-${config.name}" ''
-        set -euo pipefail
-        ${config.prepare}
-        ${config.mount} /mnt
-        nix copy --no-check-sigs --to /mnt ${config.toplevel}
-        install -D -m 0400 /run/install/key "/mnt${config.keyDestination}"
-        nixos-enter --root /mnt -- ${config.toplevel}/bin/switch-to-configuration boot
-      '';
+      run = tools.bashTool {
+        name = "install-${config.name}";
+        runtimeInputs = [ pkgs.coreutils ];
+        text = ''
+          prepare=${config.prepare}
+          mount_cmd=${config.mount}
+          toplevel=${config.toplevel}
+          key_destination=${lib.escapeShellArg config.keyDestination}
+        '' + builtins.readFile ./install.sh;
+      };
     in
     {
       toplevel = run;

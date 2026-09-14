@@ -8,6 +8,6 @@ in
   test-install = import ./blocks/install/test.nix { inherit pkgs tools; };
   test-secrets = import ./blocks/secrets/test.nix { inherit pkgs tools; };
   test-personalize = import ./blocks/personalize/test.nix { inherit pkgs tools; };
-  test-store = import ./tools/store-test.nix { inherit pkgs; };
+  test-store = import ./tools/store-test.nix { inherit pkgs tools; };
   test-compose = import ./compose-test.nix { inherit pkgs tools compose; };
 }

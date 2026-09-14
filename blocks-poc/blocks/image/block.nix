@@ -3,9 +3,7 @@
 let
   inherit (lib) mkOption types;
 
-  esp = import ./parts/esp.nix { inherit pkgs lib; inherit (tools) ids; };
-  gpt = import ./parts/gpt.nix { inherit pkgs lib; inherit (tools) ids; };
-  slotfs = import ./parts/slotfs.nix { inherit pkgs lib; inherit (tools) ids; };
+  esp = import ./parts/esp.nix { inherit pkgs lib tools; };
   iso = import ./parts/iso.nix { inherit pkgs lib; inherit (tools) ids; };
   netboot = import ./parts/netboot.nix { inherit pkgs lib; inherit (tools) ids; };
 in
@@ -99,6 +97,9 @@ in
         rootPaths = config.storePaths;
         inherit shape;
         label = "nixos";
+        # A writable root is a bootable NixOS root, so it carries the profile links a first
+        # switch reads; a read-only or initrd store is a store and nothing more.
+        profile = if shape == "ext4" then config.toplevel else null;
       };
 
       bootEfi =
@@ -106,13 +107,14 @@ in
         then "${pkgs.systemd}/lib/systemd/boot/efi/systemd-bootx64.efi"
         else "${pkgs.systemd}/lib/systemd/boot/efi/systemd-bootaa64.efi";
 
-      slotImg = slotfs {
+      slotImg = tools.fatImage {
         inherit (config) name;
-        slotName = config.slot.name;
-        inherit (config.slot) sizeMiB;
+        label = lib.toUpper config.slot.name;
+        volumeId = tools.ids.volumeId "${config.name}:slot";
+        slackMiB = config.slot.sizeMiB;
       };
 
-      disk = gpt {
+      disk = tools.gptDisk {
         inherit (config) name;
         partitions = [
           { fs = "vfat"; label = "ESP"; img = esp {

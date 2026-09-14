@@ -47,7 +47,7 @@ pkgs.runCommand "test-personalize"
 
     echo "== partition slot: the key lands, and reads back identical =="
     install -m 0644 ${slotted.file} work.img
-    ${onPartition.run} work.img
+    ${lib.getExe onPartition.run} work.img
     off="$(jq -r '.[] | select(.label=="secrets") | .startByte' ${slotted.layout})"
     mcopy -i work.img@@"$off" ::/sops.age got
     cmp got ${fixture}
@@ -57,7 +57,7 @@ pkgs.runCommand "test-personalize"
 
     echo "== refusal: no slot in the artifact — and NOTHING was written =="
     install -m 0644 ${bare.file} bare.img
-    ! ${onPartition.run} bare.img 2> refusal.log
+    ! ${lib.getExe onPartition.run} bare.img 2> refusal.log
     grep -q 'no partition named secrets' refusal.log
     cmp bare.img ${bare.file}
 
@@ -66,17 +66,17 @@ pkgs.runCommand "test-personalize"
     sgdisk -Z hole.img > /dev/null
     sgdisk -n 1:2048:+4M -c 1:secrets hole.img > /dev/null
     cp hole.img hole-pristine.img
-    ! ${onPartition.run} hole.img 2> refusal2.log
+    ! ${lib.getExe onPartition.run} hole.img 2> refusal2.log
     grep -q 'holds no filesystem' refusal2.log
     cmp hole.img hole-pristine.img
 
     echo "== file slot in an iso: found by report_lba out of the artifact, key lands =="
     install -m 0644 ${slottedIso.file} work.iso
-    ${onFile.run} work.iso
+    ${lib.getExe onFile.run} work.iso
 
     echo "== initrd-append: the appended segment carries the file =="
     mkdir tree && cp ${tree.file}/* tree/ && chmod -R +w tree
-    ${onInitrd.run} "$PWD/tree"
+    ${lib.getExe onInitrd.run} "$PWD/tree"
 
     touch $out
   ''

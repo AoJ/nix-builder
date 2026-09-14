@@ -24,9 +24,9 @@ extraction and extendModules step, an eval-only gate forcing every endpoint of e
 
 **A block tests every variant of its mechanism, so the mechanism is not what breaks.** A host can
 still be broken — it can declare parameters, or a combination of them, that do not go together —
-but that is one host failing on its own configuration while the world keeps working. Today it is
-the other way round: hosts are green and the world is broken, because what gets tested is a host's
-toplevel and not the machinery that has to deliver it.
+but that is one host failing (during tests or deploying) on its own configuration while the world
+keeps working. Today it is the other way round: hosts are green and the world is broken, because
+what gets tested is a host's toplevel and not the machinery that has to deliver it.
 
 This is the reason the blocks are cut where they are cut. A test that needs a host cannot cover a
 matrix; a test that needs no host can.
@@ -67,16 +67,16 @@ DECIDED (aoj):
 
 - **L1 — `format = iso` ⇒ `runtime.mode = memory`, `runtime.storage = squashfs`.** An ISO is
   read-only, so its root is always an overlay in RAM. A ZFS host's ISO simply does not use the
-  host's storage declaration. ("prostě není co řešit")
-- **L2 — a ZFS pool is created by the install, never by the image.** A pool is a kernel object
+  host's storage declaration for root.
+- **L2 — a ZFS pool is created by the install, never by the image (for now).** A pool is a kernel object
   with its own GUID, hostid and feature flags; it cannot come out of the nix store. The
   deliverable for a `storage = zfs` host is an `-install` image, and `#image-raw` /
   `#image-qcow2` for such a host is an **unsupported combination** — a hole the matrix names,
-  not an endpoint that quietly means something else. ("necháme jako díru, matice na to ukáže")
+  not an endpoint that quietly means something else.
 - **L3 — encryption is a property of the storage layout, and follows L2.** No `#image-*` is ever
   encrypted. Correctness, not tidiness: a pool created with a store-visible placeholder
   passphrase is compromised for its whole life — `zfs change-key` rewrites neither the master
-  key nor the previous wrapped key on disk (measured, in the plan).
+  key nor the previous wrapped key on disk (measured).
 
 Derived:
 
@@ -97,9 +97,7 @@ One prefix, the same set for every host; a host does not choose which endpoints 
 
 A sidecar is named by how the consumer takes it: a filesystem it mounts (`iso`, `vfat`) or a
 format it reads (`json`) — there is no partition table and nothing boots. `image` means "an
-artifact you get as a file", not "something that boots" (aoj: "image nemusí být jen boot").
-`json` is a full member of the set (aoj, 2026-09-14) — earlier drafts dropped it repeatedly,
-which is why it sits in the DECIDED list and under the compose test, not in an open item.
+artifact you get as a file", not "something that boots", `json` is a full member of the set.
 
 `#closure` / `#derivation` are keyed on the VARIANT, not the format: `#image-raw` and
 `#image-qcow2` of one host hold the same closure, while `#image-iso` holds a different one
@@ -131,7 +129,7 @@ must not be cached.
 
 ### The matrix
 
-Backend is assembly everywhere — no VM anywhere in the image path.
+Backend is assembly everywhere — no VM emulation in the image path.
 
 | host runtime | `#image-iso` | `#image-raw` / `-qcow2` | `#image-kexec` / `-ipxe` | `#image-*-install` |
 |---|---|---|---|---|

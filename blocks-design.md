@@ -15,7 +15,10 @@ memory after the session that took it was lost.
 A block has a declared input, a declared output, its own tests, and keeps its implementation
 details inside. It does not import another block. Verified in `docs/blocks/blocks-poc/`: all four
 blocks, the store tool, and a composer (`compose.nix`) that drives the full endpoint set over a
-hand-assembled host — six test suites, no `nixosSystem` in any of them.
+hand-assembled host — six test suites, no `nixosSystem` in any of them. Real configurations
+enter one directory later, `docs/blocks/tests/`: four hosts spanning the dimensions, the real
+extraction and extendModules step, an eval-only gate forcing every endpoint of every host to a
+`.drv`, and e2e boots of the assembled artifacts under OVMF/KVM.
 
 ## Why blocks
 
@@ -484,6 +487,11 @@ the design, not the test author's taste.
   rule; reusing it as feature testing is what the withdrawn branch got wrong — four hosts each
   spending ten VM-minutes to prove one mechanism, and zero coverage of the mechanism's own switch
   combinations. The whole cycle is covered by an e2e attached to no single host.
+- **The e2e's witness is the booted system itself**: an assembled artifact boots under OVMF/KVM
+  and a marker unit prints what only a running system can prove onto the serial console — that
+  userspace came up, and what the slot really holds (empty on a pristine image, the planted
+  key's own public half after personalize). The test hosts are throwaway configurations that
+  exist for the matrix, not production hosts wearing a second hat.
 - **`apps` must be forced at eval.** Both breakages the withdrawn branch shipped lived in `apps`,
   which neither `#drv-diff` (toplevel only) nor the check suite (checks only) evaluates. The
   check is eval-only — it discards the string context, asking what the names are without asking

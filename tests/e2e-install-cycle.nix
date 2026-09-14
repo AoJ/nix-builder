@@ -31,7 +31,7 @@ pkgs.runCommand "e2e-install-cycle"
       -drive if=virtio,format=raw,file=target.img \
       -serial file:install.log -display none -no-reboot || sc=$?
     echo "install qemu exited $sc" >&2
-    tail -n 40 install.log >&2 || true
+    if [ -e install.log ]; then tail -n 40 install.log >&2; fi
     grep -q "installer: install-time key taken from the slot" install.log
     grep -q "niximilate-install done" install.log
     grep -q "NIXIMILATE-INSTALL-OK e2e-zfs" install.log
@@ -45,7 +45,7 @@ pkgs.runCommand "e2e-install-cycle"
       -drive if=virtio,format=raw,file=target.img \
       -serial file:boot.log -display none -no-reboot || sc=$?
     echo "boot qemu exited $sc" >&2
-    tail -n 30 boot.log >&2 || true
+    if [ -e boot.log ]; then tail -n 30 boot.log >&2; fi
     grep -q "E2E-BOOT-OK e2e-zfs" boot.log
     pub="$(age-keygen -y ${fixture}/host.key)"
     grep -q "E2E-INSTALLED-KEY $pub" boot.log

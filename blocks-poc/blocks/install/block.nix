@@ -42,6 +42,12 @@ in
       description = "Where the installed system's key lands, once the target exists.";
     };
 
+    rootMode = mkOption {
+      type = types.enum [ "disk" "memory" ];
+      default = "disk";
+      description = "How the INSTALLER is rooted. The memory variant does not exist yet and refuses.";
+    };
+
     out = mkOption {
       readOnly = true;
       type = types.submodule {
@@ -56,6 +62,8 @@ in
                 initrd = mkOption { type = types.path; };
                 kernelParams = mkOption { type = types.listOf types.str; };
                 storePaths = mkOption { type = types.listOf types.package; };
+                espBinary = mkOption { type = types.path; };
+                rootMode = mkOption { type = types.enum [ "disk" "memory" ]; };
               };
             };
           };
@@ -66,16 +74,23 @@ in
 
   config.out.system =
     let
-      installer = import (pkgs.path + "/nixos/lib/eval-config.nix") {
-        inherit (config) system;
-        modules = [
-          (import ./installer-profile.nix {
-            inherit (config) name prepare mount toplevel pool keyDestination;
-            inherit (tools) niximilateInstall;
-          })
-        ];
-      };
+      installer =
+        # The same named-hole discipline as L2: a hole the eval names, never a green
+        # artifact that cannot boot.
+        if config.rootMode == "memory"
+        then throw ("install ${config.name}: the memory-rooted installer does not exist yet"
+          + " — iso/kexec/ipxe install wrappers wait on it")
+        else import (pkgs.path + "/nixos/lib/eval-config.nix") {
+          inherit (config) system;
+          modules = [
+            (import ./installer-profile.nix {
+              inherit (config) name prepare mount toplevel pool keyDestination;
+              inherit (tools) niximilateInstall;
+            })
+          ];
+        };
       toplevel = installer.config.system.build.toplevel;
+      efiArch = installer.pkgs.stdenv.hostPlatform.efiArch;
     in
     {
       inherit toplevel;
@@ -83,5 +98,8 @@ in
       initrd = "${toplevel}/initrd";
       kernelParams = installer.config.boot.kernelParams ++ [ "init=${toplevel}/init" ];
       storePaths = [ toplevel ] ++ config.closure;
+      espBinary =
+        "${installer.config.systemd.package}/lib/systemd/boot/efi/systemd-boot${efiArch}.efi";
+      rootMode = config.rootMode;
     };
 }

@@ -34,6 +34,15 @@ in
     kernel = mkOption { type = types.path; };
     initrd = mkOption { type = types.path; };
 
+    # From the TARGET's own systemd, extracted by the caller: this block's tools are the
+    # runner's, and a runner-arch pkgs.systemd carries no aa64 binary at all.
+    espBinary = mkOption { type = types.path; };
+
+    rootMode = mkOption {
+      type = types.enum [ "disk" "memory" ];
+      description = "How the packed system is rooted; validated against the format.";
+    };
+
     kernelParams = mkOption {
       type = types.listOf types.str;
       default = [ ];
@@ -81,7 +90,8 @@ in
 
   config.out =
     let
-      # The composer picked the shape; a wrong composition fails HERE, at eval, not at boot.
+      # The composer picked shape and root mode; a wrong composition fails HERE, at eval,
+      # not at boot.
       legal = {
         raw = [ "ext4" "squashfs" ];
         qcow2 = [ "ext4" "squashfs" ];
@@ -89,10 +99,19 @@ in
         kexec = [ "cpio" ];
         ipxe = [ "cpio" ];
       };
+      legalRoot = {
+        raw = [ "disk" "memory" ];
+        qcow2 = [ "disk" "memory" ];
+        iso = [ "memory" ];
+        kexec = [ "memory" ];
+        ipxe = [ "memory" ];
+      };
       shape =
-        if builtins.elem config.storeShape legal.${config.format}
-        then config.storeShape
-        else throw "image ${config.name}: a ${config.storeShape} store cannot ride in ${config.format}";
+        if !builtins.elem config.storeShape legal.${config.format}
+        then throw "image ${config.name}: a ${config.storeShape} store cannot ride in ${config.format}"
+        else if !builtins.elem config.rootMode legalRoot.${config.format}
+        then throw "image ${config.name}: a ${config.rootMode}-rooted system cannot boot from ${config.format}"
+        else config.storeShape;
 
       store = tools.store {
         inherit (config) name;
@@ -104,21 +123,19 @@ in
         profile = if shape == "ext4" then config.toplevel else null;
       };
 
-      bootEfi =
-        if config.system == "x86_64-linux"
-        then "${pkgs.systemd}/lib/systemd/boot/efi/systemd-bootx64.efi"
-        else "${pkgs.systemd}/lib/systemd/boot/efi/systemd-bootaa64.efi";
-
       slotImg = tools.fatImage {
         inherit (config) name;
-        label = lib.toUpper config.slot.name;
+        # Deliberately NOT a lookup handle: the slot is found by PARTLABEL or offset, and a
+        # meaningful fs label here would collide with the sidecar's on any machine carrying
+        # both — measured, udev's by-label picked the empty slot over the sidecar.
+        label = "SLOT";
         volumeId = tools.ids.volumeId "${config.name}:slot";
-        slackMiB = config.slot.sizeMiB;
+        sizeMiB = config.slot.sizeMiB;
       };
 
       espImg = esp {
         inherit (config) name system;
-        bootloader = bootEfi;
+        bootloader = config.espBinary;
         entries = [{
           name = "nixos";
           title = config.name;
@@ -141,6 +158,7 @@ in
       tree = netboot {
         inherit (config) name kernel initrd kernelParams;
         storeCpio = store.img;
+        slotName = if config.slot == null then null else config.slot.name;
       };
 
       byFormat = {
@@ -172,7 +190,8 @@ in
         kexec = {
           file = tree;
           layout = null;
-          slot = if config.slot == null then null else { medium = "initrd-append"; };
+          slot = if config.slot == null then null
+                 else { medium = "initrd-append"; name = config.slot.name; };
         };
         ipxe = byFormat.kexec;
       };

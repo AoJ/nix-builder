@@ -10,9 +10,12 @@ let
     toplevel = pkgs.writeText "toplevel" "not a system, but it is what was packed";
     kernel = pkgs.writeText "bzImage" "not a kernel, but it is a file";
     initrd = pkgs.writeText "initrd" "not an initrd either";
+    espBinary = pkgs.writeText "systemd-boot.efi" "not a bootloader, but it is a file";
     kernelParams = [ "console=ttyS0" "root=LABEL=nixos" ];
     storePaths = [ pkgs.hello ];
   };
+
+  rootModeFor = f: if builtins.elem f [ "iso" "kexec" "ipxe" ] then "memory" else "disk";
 
   # THE MATRIX: every legal (format, store shape, slot) combination, each built and probed.
   # The legal map is restated here ON PURPOSE — a test that derives its expectations from
@@ -33,6 +36,7 @@ let
     name = caseName f s slot;
     format = f;
     storeShape = s;
+    rootMode = rootModeFor f;
     inherit slot;
   });
   cases = lib.concatMap (f:
@@ -47,19 +51,35 @@ let
   # non-deterministic builder is invisible to nix and why this has to be forced.
   again = d: d.overrideAttrs (_: { determinismProbe = "2"; });
 
-  other = image (payload // { name = "other"; format = "raw"; storeShape = "ext4"; });
-  otherIso = image (payload // { name = "other"; format = "iso"; storeShape = "squashfs"; });
+  other = image (payload // {
+    name = "other"; format = "raw"; storeShape = "ext4"; rootMode = "disk";
+  });
+  otherIso = image (payload // {
+    name = "other"; format = "iso"; storeShape = "squashfs"; rootMode = "memory";
+  });
 
-  # A wrong composition fails at eval, in image — not at boot on the machine. The set is
-  # the COMPLEMENT of the legal map: every shape a format does not take.
+  # An aarch64 artifact assembles NATIVELY: the tools are the runner's, the bootloader is
+  # the caller's — nothing here executes target code, which is what keeps the arm builder
+  # out of the image path.
+  asAarch64 = image (payload // {
+    name = "fixture-aarch64"; system = "aarch64-linux";
+    format = "raw"; storeShape = "ext4"; rootMode = "disk";
+  });
+
+  # A wrong composition fails at eval, in image — not at boot on the machine. The sets are
+  # the COMPLEMENTS of the legal maps: every shape a format does not take, and every root
+  # mode it cannot boot.
   allShapes = [ "ext4" "squashfs" "cpio" ];
-  refused = f: s:
+  refused = f: s: r:
     !(builtins.tryEval (image (payload // {
-      name = "bad"; format = f; storeShape = s;
+      name = "bad"; format = f; storeShape = s; rootMode = r;
     })).file.outPath).success;
-  refusals = lib.concatMap (f:
-    map (s: { inherit f s; ok = refused f s; })
-      (lib.subtractLists legal.${f} allShapes)) formats;
+  refusals =
+    lib.concatMap (f:
+      map (s: { inherit f s; ok = refused f s (rootModeFor f); })
+        (lib.subtractLists legal.${f} allShapes)) formats
+    ++ map (f: { inherit f; r = "disk"; ok = refused f (builtins.head legal.${f}) "disk"; })
+      [ "iso" "kexec" "ipxe" ];
 
   # Per-format probes. Each reads names and offsets OUT of the artifact (or its emitted
   # layout), never restating them.
@@ -71,7 +91,7 @@ let
       qemu-img convert -f qcow2 -O raw ${c.built.file} converted.img
       cmp converted.img ${(image (payload // {
         name = caseName "qcow2" c.shape c.slot;
-        format = "raw"; storeShape = c.shape; slot = c.slot;
+        format = "raw"; storeShape = c.shape; rootMode = "disk"; slot = c.slot;
       })).file}
     ''}
     sgdisk -p "$img" | grep -q ESP
@@ -121,6 +141,11 @@ let
     cmp -n "$n" ${c.built.file}/initrd ${payload.initrd}
     tail -c +$(( n + 1 )) ${c.built.file}/initrd \
       | cpio -t --quiet | grep -q 'nix/store/nix-path-registration'
+    ${if c.slotted then ''
+      grep -aqF -- '.slot-secrets' ${c.built.file}/initrd
+    '' else ''
+      ! grep -aqF -- '.slot-' ${c.built.file}/initrd
+    ''}
   '';
 
   checksFor = c:
@@ -160,11 +185,14 @@ pkgs.runCommand "test-image"
 
     ${lib.concatMapStrings checksFor cases}
 
-    echo "== the caller never said BOOTX64.EFI — the block knew =="
+    echo "== the caller never said BOOTX64.EFI — the block knew, per architecture =="
     esp_off="$(jq -r '.[] | select(.label=="ESP") | .startByte' ${fixtureRaw.layout})"
     mdir -i ${fixtureRaw.file}@@"$esp_off" -/ ::/EFI/BOOT | grep -q BOOTX64
     mcopy -i ${fixtureRaw.file}@@"$esp_off" ::/loader/entries/nixos.conf - \
       | grep -q 'options console=ttyS0 root=LABEL=nixos'
+    aa_off="$(jq -r '.[] | select(.label=="ESP") | .startByte' ${asAarch64.layout})"
+    mdir -i ${asAarch64.file}@@"$aa_off" -/ ::/EFI/BOOT | grep -q BOOTAA64
+    mcopy -i ${asAarch64.file}@@"$aa_off" ::/EFI/BOOT/BOOTAA64.EFI - | cmp - ${payload.espBinary}
 
     echo "== built twice, byte for byte the same — every case =="
     ${lib.concatMapStrings determinism cases}

@@ -8,9 +8,10 @@ artifact=${1:?usage: personalize <artifact>}
 required slot_path manifest
 
 sc=0
-lba=$(xorriso -indev "$artifact" -find "$slot_path" -exec report_lba -- 2>/dev/null \
-  | awk -F, '/^File data lba/ { gsub(/ /, "", $2); print $2 }') || sc=$?
-[ "$sc" = 0 ] && [ -n "$lba" ] || fatal "refusal: the artifact carries no file at $slot_path"
+report=$(xorriso -indev "$artifact" -find "$slot_path" -exec report_lba -- 2>/dev/null) || sc=$?
+[ "$sc" = 0 ] || fatal "refusal: cannot read $artifact as an iso"
+lba=$(awk -F, '/^File data lba/ { gsub(/ /, "", $2); print $2 }' <<<"$report")
+[ -n "$lba" ] || fatal "refusal: the artifact carries no file at $slot_path"
 off=$((lba * 2048))
 
 mdir -i "$artifact@@$off" :: > /dev/null 2>&1 \
@@ -21,12 +22,10 @@ while IFS=$'\t' read -r src dest; do
   [ -e "$src" ] || fatal "refusal: no such file to place: $src"
 done < "$manifest"
 
-readback=$(mktemp)
-add_cleanup rm -f "$readback"
 while IFS=$'\t' read -r src dest; do
   [ -n "$src" ] || continue
   run "place $dest" mcopy -o -i "$artifact@@$off" "$src" "::$dest"
-  run "read back $dest" mcopy -o -i "$artifact@@$off" "::$dest" "$readback"
-  run "verify $dest" cmp "$readback" "$src"
+  mcopy -i "$artifact@@$off" "::$dest" - | cmp - "$src" \
+    || fatal "read-back mismatch: $dest"
 done < "$manifest"
 info "personalized $artifact"

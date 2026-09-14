@@ -20,8 +20,12 @@ pkgs.runCommand "${name}.iso"
       cp ${f.source} "$staged"${lib.escapeShellArg f.path}
     '') extraFiles}
 
-    # xorriso honours the stdenv's SOURCE_DATE_EPOCH; the volume id comes from the image
-    # name, so two images never answer the same by-label lookup.
+    # xorriso honours SOURCE_DATE_EPOCH for the volume stamps, but directory records carry
+    # the STAGED tree's own times — and mktemp's is the wall clock. Canonical times on the
+    # tree close that hole; measured, the root record's date differed between two builds
+    # without it. The volume id comes from the image name, so two images never answer the
+    # same by-label lookup.
+    find "$staged" -exec touch -h -d @1 {} +
     xorriso -as mkisofs -r -J \
       -volid ${lib.escapeShellArg (lib.toUpper (ids.volumeId "${name}:iso"))} \
       -e boot/efi.img -no-emul-boot -isohybrid-gpt-basdat \

@@ -58,7 +58,6 @@ in
 {
   img = { inherit ext4 squashfs cpio; }.${shape};
   fs = shape;
-  registered = true;
   needsBootUnit = shape != "ext4";
   inherit registrationPath uuid;
 }

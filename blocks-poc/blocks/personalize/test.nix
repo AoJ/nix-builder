@@ -11,20 +11,29 @@ let
     toplevel = pkgs.writeText "toplevel" "what was packed";
     kernel = pkgs.writeText "bzImage" "not a kernel";
     initrd = pkgs.writeText "initrd" "not an initrd";
+    espBinary = pkgs.writeText "systemd-boot.efi" "not a bootloader";
     kernelParams = [ "console=ttyS0" ];
     storePaths = [ pkgs.hello ];
   };
 
   slotted = image (payload // {
-    name = "fixture"; format = "raw"; storeShape = "ext4";
+    name = "fixture"; format = "raw"; storeShape = "ext4"; rootMode = "disk";
     slot = { name = "secrets"; sizeMiB = 4; };
   });
-  bare = image (payload // { name = "fixture"; format = "raw"; storeShape = "ext4"; });
+  bare = image (payload // {
+    name = "fixture"; format = "raw"; storeShape = "ext4"; rootMode = "disk";
+  });
   slottedIso = image (payload // {
-    name = "fixture"; format = "iso"; storeShape = "squashfs";
+    name = "fixture"; format = "iso"; storeShape = "squashfs"; rootMode = "memory";
     slot = { name = "secrets"; sizeMiB = 4; };
   });
-  tree = image (payload // { name = "fixture"; format = "kexec"; storeShape = "cpio"; });
+  tree = image (payload // {
+    name = "fixture"; format = "kexec"; storeShape = "cpio"; rootMode = "memory";
+    slot = { name = "secrets"; sizeMiB = 4; };
+  });
+  bareTree = image (payload // {
+    name = "fixture"; format = "kexec"; storeShape = "cpio"; rootMode = "memory";
+  });
 
   # The throwaway key IS the planted file, so the whole chain is real: the runner derives
   # its public half and matches it against the bundle's recipients before anything lands.
@@ -41,7 +50,7 @@ let
     slot = slottedIso.slot;
     recipientCheck = { bundle = "${fixture}/bundle.json"; keyTarget = "/sops.age"; };
   };
-  onInitrd = runFor { slot = { medium = "initrd-append"; }; };
+  onInitrd = runFor { slot = tree.slot; };
   foreignKey = runFor {
     slot = slotted.slot;
     recipientCheck = { bundle = "${fixture}/bundle-foreign.yaml"; keyTarget = "/sops.age"; };
@@ -100,9 +109,15 @@ pkgs.runCommand "test-personalize"
     install -m 0644 ${slottedIso.file} work.iso
     ${onFile} work.iso
 
-    echo "== initrd-append: no check declared, the appended segment carries the file =="
+    echo "== initrd-append: the RESERVED slot segment is required, then the file rides =="
     mkdir tree && cp ${tree.file}/* tree/ && chmod -R +w tree
     ${onInitrd} "$PWD/tree"
+
+    echo "== refusal: a netboot tree whose image never declared a slot =="
+    mkdir bare-tree && cp ${bareTree.file}/* bare-tree/ && chmod -R +w bare-tree
+    ! ${onInitrd} "$PWD/bare-tree" 2> refusal3.log
+    grep -q 'no slot segment' refusal3.log
+    cmp bare-tree/initrd ${bareTree.file}/initrd
 
     touch $out
   ''

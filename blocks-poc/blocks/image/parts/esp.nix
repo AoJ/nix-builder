@@ -36,6 +36,6 @@ tools.fatImage {
     { source = "${loaderConf}"; target = "/loader/loader.conf"; }
   ] ++ entryFiles;
   # FAT32 is not legal under ~33 MiB, and an ESP is FAT32 by convention.
-  slackMiB = 36;
+  sizeMiB = 36;
   fat = "32";
 }

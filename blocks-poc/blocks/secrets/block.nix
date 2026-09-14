@@ -8,10 +8,12 @@ in
     name = mkOption { type = types.strMatching "[a-z0-9][a-z0-9-]*"; };
 
     files = mkOption {
+      # Paths as STRINGS, resolved when the runner runs: a secret in a derivation is a
+      # secret in the store, and a sidecar exists to carry secrets.
       type = types.listOf (types.submodule {
         options = {
           target = mkOption { type = types.strMatching "/.*"; };
-          source = mkOption { type = types.path; };
+          source = mkOption { type = types.str; };
         };
       });
     };
@@ -25,7 +27,8 @@ in
       readOnly = true;
       type = types.submodule {
         options = {
-          file = mkOption { type = types.package; };
+          # A tool taking the destination as its argument, not a derivation — see files.
+          run = mkOption { type = types.package; };
           fs = mkOption { type = types.str; };
         };
       };
@@ -34,45 +37,38 @@ in
 
   config.out =
     let
-      staged = lib.concatMapStringsSep "\n" (f: ''
-        mkdir -p "$staged$(dirname ${lib.escapeShellArg f.target})"
-        cp ${f.source} "$staged"${lib.escapeShellArg f.target}
-      '') config.files;
+      manifest = pkgs.writeText "${config.name}-sidecar-manifest"
+        (lib.concatMapStrings (f: "${f.source}\t${f.target}\n") config.files);
 
-      vfat = tools.fatImage {
-        inherit (config) name;
-        label = "SECRETS";
-        volumeId = tools.ids.volumeId "${config.name}:sidecar";
-        files = map (f: { source = "${f.source}"; inherit (f) target; }) config.files;
-        slackMiB = 4;
+      volumeId = tools.ids.volumeId "${config.name}:sidecar";
+
+      runner = script: vars: runtimeInputs: tools.bashTool {
+        name = "sidecar-${config.name}";
+        inherit runtimeInputs;
+        text = vars + builtins.readFile script;
       };
 
-      isoFile = pkgs.runCommand "${config.name}-sidecar.iso"
-        { nativeBuildInputs = [ pkgs.xorriso pkgs.coreutils ]; }
-        ''
-          set -euo pipefail
-          staged="$(mktemp -d)"
-          ${staged}
-          xorriso -as mkisofs -r -J \
-            -volid ${lib.escapeShellArg (lib.toUpper (tools.ids.volumeId "${config.name}:sidecar"))} \
-            -o "$out" "$staged"
-        '';
-      # A medium the consumer READS, not mounts: one object, target path → base64 content.
-      # Base64 because a secret is bytes, and json only carries text.
-      json = pkgs.runCommand "${config.name}-sidecar.json"
-        { nativeBuildInputs = [ pkgs.jq pkgs.coreutils ]; }
-        ''
-          set -euo pipefail
-          {
-            ${lib.concatMapStringsSep "\n" (f: ''
-              jq -n --arg t ${lib.escapeShellArg f.target} \
-                --arg c "$(base64 -w0 < ${f.source})" '{ key: $t, value: $c }'
-            '') config.files}
-          } | jq -s -S from_entries > "$out"
-        '';
+      byMedium = {
+        vfat = runner ./sidecar-vfat.sh ''
+          fat_image=${lib.getExe tools.fatImageApp}
+          label=SECRETS
+          volume_id=${lib.escapeShellArg volumeId}
+          size_bytes=${toString (4 * 1048576)}
+          manifest=${manifest}
+        '' [ pkgs.coreutils ];
+
+        iso = runner ./sidecar-iso.sh ''
+          volume_id=${lib.escapeShellArg (lib.toUpper volumeId)}
+          manifest=${manifest}
+        '' [ pkgs.coreutils pkgs.xorriso ];
+
+        json = runner ./sidecar-json.sh ''
+          manifest=${manifest}
+        '' [ pkgs.coreutils pkgs.jq ];
+      };
     in
     {
-      file = { vfat = vfat; iso = isoFile; json = json; }.${config.medium};
+      run = byMedium.${config.medium};
       fs = { vfat = "vfat"; iso = "iso9660"; json = "json"; }.${config.medium};
     };
 }

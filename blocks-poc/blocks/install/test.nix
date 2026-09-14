@@ -29,6 +29,13 @@ in
 
 assert lib.assertMsg (builtins.elem target handed.system.storePaths)
   "the installer must CARRY the system it installs — offline is the point";
+assert lib.assertMsg
+  (!(builtins.tryEval (install {
+    name = "fixture"; system = "x86_64-linux"; toplevel = target; closure = [ target ];
+    prepare = pkgs.writeShellScript "p" ":"; mount = pkgs.writeShellScript "m" ":";
+    pool = "rpool"; keyDestination = "/k"; rootMode = "memory";
+  }).system.toplevel.outPath).success)
+  "the memory-rooted installer does not exist yet and must refuse BY NAME, not build";
 
 pkgs.runCommand "test-install"
   { nativeBuildInputs = [ pkgs.gptfdisk pkgs.e2fsprogs pkgs.jq pkgs.coreutils pkgs.gnugrep ]; }

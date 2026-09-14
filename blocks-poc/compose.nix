@@ -1,6 +1,5 @@
-# The composer: the ONE place that knows the host. It evaluates the variant the format asks
-# for, extracts derivations and strings, picks the store shape, composes the slot, and hands
-# each block only what its contract names. Blocks never see it and never see each other.
+# The composer: the ONE place that knows the host. Blocks never see it and never see each
+# other; everything a block receives is derivations and strings extracted here.
 { pkgs, tools }:
 
 let
@@ -18,27 +17,21 @@ in
 host:
 
 let
-  # Format is the FIRST decision: a live format packs the memory-rooted variant, which the
-  # composer evaluated — with real hosts this is the extendModules step, and it happens
-  # before anything enters a block. The iso variant additionally carries the medium's
-  # runtime face, keyed by the LABEL — derived from the same name through the same ids
-  # tool the image block uses, which is the agreement point (the e2e boot is its test).
+  # The label is the one constant spanning eval and artifact: both sides derive it from
+  # the same name through the same ids tool, and the e2e boot tests the agreement.
   isoLabel = lib.toUpper (tools.ids.volumeId "${host.name}-iso:iso");
   variantFor = format:
     if format == "iso" && host.variants ? liveIso then host.variants.liveIso isoLabel
     else if builtins.elem format liveFormats then host.variants.live
     else host.variants.runtime;
 
-  # The extraction: the one point where the pipe's carrier changes shape. Written out so it
-  # stays visible — and small.
   extract = v: {
-    inherit (v) toplevel kernel initrd kernelParams;
+    inherit (v) toplevel kernel initrd kernelParams espBinary rootMode;
     storePaths = [ v.toplevel ];
   };
 
-  # The store shape enters from above: the composer knows which format it is asking for.
-  # image validates the pick — see the block. L2 makes one combination a NAMED hole: a zfs
-  # pool is created by the install, never by the image.
+  # L2 makes one combination a NAMED hole: a zfs pool is created by the install, never by
+  # the image.
   diskShape =
     if host.variants.runtime.storage == "zfs"
     then throw ("unsupported (L2): a zfs pool is created by the install, never by the image"
@@ -52,8 +45,9 @@ let
     qcow2 = diskShape;
   }.${format};
 
-  # The installer is an OS of its own, so its store is the WRAPPER's — the target's storage
-  # never shapes it. That is why the L2 hole does not exist on the -install half.
+  # The installer is an OS of its own; its store and root mode are the WRAPPER's, so the
+  # target's storage never shapes them and the L2 hole does not exist on the -install half.
+  # The memory-rooted installer does not exist yet: install refuses it by name.
   installerShapeFor = format: {
     iso = "squashfs";
     kexec = "cpio";
@@ -61,8 +55,10 @@ let
     raw = "ext4";
     qcow2 = "ext4";
   }.${format};
+  installerRootModeFor = format:
+    if builtins.elem format liveFormats then "memory" else "disk";
 
-  # A declared delivery must have a producer; a member nobody produces fails HERE, at eval,
+  # A declared delivery must have a producer; a member nobody produces fails at eval
   # instead of leaving a host to boot without an identity.
   producers = [ "embedded" "sidecar" ];
   delivery =
@@ -72,44 +68,69 @@ let
     then host.secrets.delivery
     else throw "no producer for secrets.delivery ${builtins.toJSON missing}";
 
-  # The extractor seam for the slot: today the slot is composed from the host's declared
-  # deliveries; a storage layout that owns a shape would be READ here, not consulted by a
-  # block.
+  # The extractor seam for the slot: composed from the host's declared deliveries today; a
+  # storage layout that owns a shape would be READ here, not consulted by a block.
   slotFor = _format:
     if builtins.elem "embedded" delivery
     then { name = "secrets"; sizeMiB = 4; }
     else null;
 
-  imageFor = format: shape: system: nameSuffix:
+  imageFor = format: shape: rootMode: system: nameSuffix:
     image ({
       name = "${host.name}-${format}${nameSuffix}";
       inherit format;
       inherit (host) system;
       storeShape = shape;
       slot = slotFor format;
-    } // extract system);
+    } // extract system // { inherit rootMode; });
 
-  runtimeEndpoints = lib.listToAttrs (map (f: {
+  runtimeEndpoints = lib.listToAttrs (map (f: rec {
     name = "image-${f}";
-    value = imageFor f (storeShapeFor f) (variantFor f) "";
+    value =
+      let v = variantFor f;
+      in imageFor f (storeShapeFor f) v.rootMode v "";
   }) formats);
 
   # What gets installed is ALWAYS the host as it runs; the format only shapes the wrapper.
-  # The installing OS is the block's own.
-  installer =
+  installerFor = rootMode:
     (install {
       inherit (host) name system;
       toplevel = host.variants.runtime.toplevel;
       closure = [ host.variants.runtime.toplevel ];
       inherit (host.install) prepare mount pool keyDestination;
+      inherit rootMode;
     }).system;
 
   installEndpoints = lib.listToAttrs (map (f: {
     name = "image-${f}-install";
-    value = imageFor f (installerShapeFor f) installer "-install";
+    value =
+      let installer = installerFor (installerRootModeFor f);
+      in imageFor f (installerShapeFor f) installer.rootMode installer "-install";
   }) formats);
 
-  sidecarFiles = map (f: { inherit (f) target source; }) host.secrets.files;
+  sidecarFiles = map (f: { inherit (f) target; source = f.runtimeSource; }) host.secrets.files;
+
+  personalizeFor = name: slot:
+    if slot == null
+    then {
+      # A host that declares no embedded delivery gets a silent no-op, never a missing
+      # endpoint — nothing may key off "the host has a bundle".
+      run = tools.bashTool {
+        name = "personalize-${name}";
+        runtimeInputs = [ ];
+        text = ''
+          info "personalize ${name}: no embedded delivery declared — nothing to do"
+        '';
+      };
+    }
+    else personalize {
+      inherit name slot;
+      files = sidecarFiles;
+      recipientCheck =
+        if host.secrets ? bundle
+        then { inherit (host.secrets) bundle keyTarget; }
+        else null;
+    };
 in
 
 runtimeEndpoints // installEndpoints // {
@@ -129,31 +150,14 @@ runtimeEndpoints // installEndpoints // {
     medium = "json";
   };
 
-  image-personalize = personalize {
-    inherit (host) name;
-    # Bound to the host's DELIVERABLE: for a zfs host that is the -install artifact (L2 —
-    # the runtime disk endpoints are the hole), for everyone else the runtime image.
-    slot =
-      if host.variants.runtime.storage == "zfs"
-      then installEndpoints.image-raw-install.slot
-      else runtimeEndpoints.image-raw.slot;
-    files = map (f: { inherit (f) target; source = f.runtimeSource; }) host.secrets.files;
-    recipientCheck =
-      if host.secrets ? bundle
-      then { inherit (host.secrets) bundle keyTarget; }
-      else null;
-  };
-  # The same phase 2, bound to the iso artifact's slot — a FILE, found by report_lba. One
-  # endpoint, one runner per artifact family the caller holds.
-  image-personalize-iso = personalize {
-    name = "${host.name}-iso";
-    slot = runtimeEndpoints.image-iso.slot;
-    files = map (f: { inherit (f) target; source = f.runtimeSource; }) host.secrets.files;
-    recipientCheck =
-      if host.secrets ? bundle
-      then { inherit (host.secrets) bundle keyTarget; }
-      else null;
-  };
+  # Bound to the host's DELIVERABLE: for a zfs host the -install artifact (L2 — the runtime
+  # disk endpoints are the hole), for everyone else the runtime image; the iso runner is
+  # the same phase 2 against the iso artifact's slot FILE.
+  image-personalize = personalizeFor host.name
+    (if host.variants.runtime.storage == "zfs"
+     then installEndpoints.image-raw-install.slot
+     else runtimeEndpoints.image-raw.slot);
+  image-personalize-iso = personalizeFor "${host.name}-iso" runtimeEndpoints.image-iso.slot;
 
   # Names for what a block already returned — lookups, never a second evaluation.
   closure = host.variants.runtime.toplevel;

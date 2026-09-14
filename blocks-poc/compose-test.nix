@@ -4,8 +4,8 @@ let
   inherit (pkgs) lib;
   fixture = import ./blocks/personalize/fixture.nix { inherit pkgs; };
 
-  # A synthetic host: two variants, because a live format packs a DIFFERENT toplevel.
-  # No nixosSystem anywhere.
+  # A synthetic host, assembled by hand: two variants, because a live format packs a
+  # DIFFERENT toplevel. No nixosSystem anywhere.
   host = {
     name = "demo";
     system = "x86_64-linux";
@@ -14,14 +14,18 @@ let
         toplevel = pkgs.writeText "demo-toplevel" "the host as it runs";
         kernel = pkgs.writeText "demo-kernel" "kernel";
         initrd = pkgs.writeText "demo-initrd" "initrd";
+        espBinary = pkgs.writeText "systemd-boot.efi" "not a bootloader";
         kernelParams = [ "root=LABEL=nixos" ];
+        rootMode = "disk";
         storage = "ext4";
       };
       live = {
         toplevel = pkgs.writeText "demo-live-toplevel" "the memory-rooted variant";
         kernel = pkgs.writeText "demo-kernel" "kernel";
         initrd = pkgs.writeText "demo-live-initrd" "live initrd";
+        espBinary = pkgs.writeText "systemd-boot.efi" "not a bootloader";
         kernelParams = [ "boot.live" ];
+        rootMode = "memory";
       };
     };
     secrets = {
@@ -44,22 +48,21 @@ let
 
   e = compose host;
 
-  # The matrix's one hole is a LAW: it reads the same for every zfs host, and it does not
-  # exist on the -install half, whose store is the wrapper's own.
+  refusedEndpoint = h: n:
+    !(builtins.tryEval (compose h).${n}.file.outPath).success;
+
   zfsHost = host // {
     variants = host.variants // {
       runtime = host.variants.runtime // { storage = "zfs"; };
     };
   };
-  zfsRefused = !(builtins.tryEval (compose zfsHost).image-raw.file.outPath).success;
-  zfsInstallFine = (builtins.tryEval (compose zfsHost).image-raw-install.file.outPath).success;
 
-  # A declared delivery must have a producer.
   unproduced = host // { secrets = host.secrets // { delivery = [ "embedded" "deploy" ]; }; };
-  unproducedRefused = !(builtins.tryEval (compose unproduced).image-raw.file.outPath).success;
+
+  memoryInstallHoles = map (n: { case = n; refused = refusedEndpoint host n; })
+    [ "image-iso-install" "image-kexec-install" "image-ipxe-install" ];
 in
 
-# The variant is keyed on the format, and the names make it visible:
 assert lib.assertMsg (e.image-raw.toplevel == e.image-qcow2.toplevel)
   "raw and qcow2 pack the SAME closure";
 assert lib.assertMsg (e.image-iso.toplevel != e.image-raw.toplevel)
@@ -68,12 +71,14 @@ assert lib.assertMsg (e.closure-live == e.image-iso.toplevel)
   "#closure-live is a LOOKUP of what image packed, not a second evaluation";
 assert lib.assertMsg (e.closure == host.variants.runtime.toplevel)
   "#closure is the host as it runs, named";
-assert lib.assertMsg zfsRefused
+assert lib.assertMsg (refusedEndpoint zfsHost "image-raw")
   "L2: #image-raw for a zfs host is a hole the composer names at eval";
-assert lib.assertMsg zfsInstallFine
+assert lib.assertMsg (!refusedEndpoint zfsHost "image-raw-install")
   "L2 costs nothing on the -install half: the installer's store is the wrapper's own";
-assert lib.assertMsg unproducedRefused
+assert lib.assertMsg (refusedEndpoint unproduced "image-raw")
   "a delivery nobody produces must fail at eval";
+assert lib.assertMsg (lib.all (h: h.refused) memoryInstallHoles)
+  "the memory-rooted installer is missing, so its wrappers refuse at eval: ${builtins.toJSON memoryInstallHoles}";
 
 pkgs.runCommand "test-compose"
   { nativeBuildInputs = [
@@ -83,7 +88,7 @@ pkgs.runCommand "test-compose"
   ''
     set -euo pipefail
 
-    echo "== the host asked for embedded delivery, so every disk endpoint has the slot =="
+    echo "== the host asked for embedded delivery, so every deliverable has the slot =="
     sgdisk -p ${e.image-raw.file} | grep -q secrets
     xorriso -indev ${e.image-iso.file} -find ${e.image-iso.slot.path} 2>/dev/null \
       | grep -q secrets
@@ -96,10 +101,6 @@ pkgs.runCommand "test-compose"
     debugfs -R "ls /nix/store" root.img | tr ' ' '\n' \
       | grep "$(basename ${host.variants.runtime.toplevel})" > /dev/null
 
-    echo "== the netboot install rides the initrd, because the composer picked cpio =="
-    [ -e ${e.image-kexec-install.file}/kexec.sh ]
-    grep -aq 'the host as it runs' ${e.image-kexec-install.file}/initrd
-
     echo "== phase 2 composes against what image RETURNED; the key belongs, and lands =="
     install -m 0644 ${e.image-raw.file} work.img
     ${lib.getExe e.image-personalize.run} work.img
@@ -107,12 +108,15 @@ pkgs.runCommand "test-compose"
     mcopy -i work.img@@"$off" ::/sops.age got
     cmp got ${fixture}/host.key
 
-    echo "== the sidecar is there for the host that also declared it — ALL THREE media =="
-    mcopy -i ${e.image-secrets-vfat.file} ::/sops.age side
+    echo "== the sidecars are RUNNERS, and every medium reads back =="
+    ${lib.getExe e.image-secrets-vfat.run} side.img
+    mcopy -i side.img ::/sops.age side
     cmp side ${fixture}/host.key
-    xorriso -osirrox on -indev ${e.image-secrets-iso.file} -extract /sops.age side-iso 2>/dev/null
+    ${lib.getExe e.image-secrets-iso.run} side.iso
+    xorriso -osirrox on -indev side.iso -extract /sops.age side-iso 2>/dev/null
     cmp side-iso ${fixture}/host.key
-    jq -r '."/sops.age"' ${e.image-secrets-json.file} | base64 -d > side-json
+    ${lib.getExe e.image-secrets-json.run} side.json
+    jq -r '."/sops.age"' side.json | base64 -d > side-json
     cmp side-json ${fixture}/host.key
 
     touch $out

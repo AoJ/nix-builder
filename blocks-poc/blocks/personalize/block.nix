@@ -77,6 +77,7 @@ in
       '' [ pkgs.coreutils pkgs.gawk pkgs.xorriso pkgs.mtools pkgs.diffutils ];
 
       initrd-append = runner ./initrd-append.sh ''
+        slot_name=${lib.escapeShellArg config.slot.name}
         manifest=${manifest}
       '' [ pkgs.coreutils pkgs.findutils pkgs.cpio ];
     }.${config.slot.medium};

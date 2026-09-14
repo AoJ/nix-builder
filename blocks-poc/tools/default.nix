@@ -10,7 +10,8 @@ let
 in
 {
   inherit bashTool ids;
-  fatImage = import ./fat-image.nix { inherit pkgs bashTool; };
+  fatImage = (import ./fat-image.nix { inherit pkgs bashTool; }).build;
+  fatImageApp = (import ./fat-image.nix { inherit pkgs bashTool; }).app;
   gptDisk = import ./gpt-disk.nix { inherit pkgs bashTool ids; };
   store = import ./store.nix { inherit pkgs bashTool; };
   # The repo's ONE tested install action (disko-or-import -> place key -> nixos-install ->

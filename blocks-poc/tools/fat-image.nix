@@ -2,20 +2,23 @@
 
 let
   inherit (pkgs) lib;
-  tool = bashTool {
+  app = bashTool {
     name = "fat-image";
     runtimeInputs = [ pkgs.coreutils pkgs.dosfstools pkgs.mtools ];
     text = builtins.readFile ./fat-image.sh;
   };
-in
-{ name, label, volumeId, files ? [ ], slackMiB ? 1, fat ? "auto" }:
 
-let
-  manifest = pkgs.writeText "${name}-${lib.toLower label}-manifest"
-    (lib.concatMapStrings (f: "${f.source}\t${f.target}\n") files);
+  # sizeMiB is a FLOOR: an empty manifest (a slot) gets exactly this size, payload can only
+  # grow it.
+  build = { name, label, volumeId, files ? [ ], sizeMiB ? 1, fat ? "auto" }:
+    let
+      manifest = pkgs.writeText "${name}-${lib.toLower label}-manifest"
+        (lib.concatMapStrings (f: "${f.source}\t${f.target}\n") files);
+    in
+    pkgs.runCommand "${name}-${lib.toLower label}.img" { }
+      ''
+        ${app}/bin/fat-image "$out" ${lib.escapeShellArg label} ${lib.escapeShellArg volumeId} \
+          ${toString (sizeMiB * 1048576)} ${manifest} ${lib.escapeShellArg fat}
+      '';
 in
-pkgs.runCommand "${name}-${lib.toLower label}.img" { }
-  ''
-    ${tool}/bin/fat-image "$out" ${lib.escapeShellArg label} ${lib.escapeShellArg volumeId} \
-      ${toString (slackMiB * 1048576)} ${manifest} ${lib.escapeShellArg fat}
-  ''
+{ inherit app build; }

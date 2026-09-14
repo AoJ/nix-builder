@@ -171,11 +171,15 @@ not know about each other, do not call each other, and never see a host.
 
 **A block's input is derivations and strings, never a configuration.** The boundary is not
 policed but made unrepresentable: the composer extracts what a block needs — toplevel, kernel,
-initrd, kernelParams, closure, names — and the block is handed nothing a `niximilate.*` could be
-read from. The positive proof is the block's own tests, driven from a record assembled by hand
-with no `nixosSystem` in it.
+initrd, kernelParams, espBinary, rootMode, closure, names — and the block is handed nothing a
+`niximilate.*` could be read from. The positive proof is the block's own tests, driven from a
+record assembled by hand with no `nixosSystem` in it. Two of those values deserve their own
+sentence: **espBinary comes from the TARGET's systemd**, because the blocks' tools are the
+runner's and a runner-arch `pkgs.systemd` carries no aa64 binary at all — this is what keeps the
+arm builder out of the image path; and **rootMode is derived, not declared** — a tmpfs root is
+what memory-rooted means.
 
-Two consequences, derived in the plan and kept:
+Three consequences, derived in the plan and kept:
 
 - **Format is the first decision, not the last.** A live format packs the memory-rooted variant,
   and the variant is a configuration change — so the composer evaluates it before anything enters
@@ -194,6 +198,12 @@ Two consequences, derived in the plan and kept:
   installer and the host's closure); the target's storage never shapes it, which is why the L2
   hole does not exist there — and why the composer names that hole itself, at eval, for the
   runtime half of a zfs host.
+- **The root mode travels with the payload and `image` validates it the same way**: `iso` /
+  `kexec` / `ipxe` cannot boot a disk-rooted system, so `(format ⇒ rootMode)` fails at eval like
+  a wrong store shape. This is the axis whose absence let `#image-iso-install` evaluate green as
+  an artifact that could not boot: `install` now takes `rootMode`, and the memory-rooted
+  installer — which does not exist yet — refuses BY NAME, exactly like L2. A missing variant is a
+  red eval, never a green name.
 
 ## Tools
 
@@ -250,6 +260,12 @@ Nix cannot gate the first for us: two builds of one derivation are the same stor
 non-deterministic builder is invisible to it. It is gated where everything else is — in the test
 that belongs to whatever produced the artifact — by forcing a second build of the same inputs and
 comparing.
+
+A FAT label is too short to carry a hash, so for labels the rule inverts: **a label is either a
+lookup handle or it is nothing, and only one artifact in an attachment set may own a given
+handle.** The sidecar's `SECRETS` is a handle — its consumer mounts by it; the slot's label is
+deliberately none (`SLOT`), because a slot is found by partlabel or offset — measured, a slot
+labelled like the sidecar made udev's by-label pick the empty slot over the sidecar beside it.
 
 **Both properties are per-architecture.** A native and an emulated build of one squashfs come out
 the same size and not the same bytes, so "the same bytes" holds for two builds on the same
@@ -376,6 +392,11 @@ Files in, a sidecar out. Nothing boots and there is no partition table.
 A sidecar is data placed beside an image or file for the consumer to take. **Whether the consumer
 mounts it or reads it is a property of the medium, not part of what a sidecar is**.
 
+**Its output is a runner, not a derivation** — the same argument personalize carries: a secret
+in a derivation is a secret in the store, and a sidecar exists to carry secrets. Phase-one
+mechanics are shared through the `fat-image` tool's app, so a sidecar and a slot are still one
+mechanism; the sources enter as strings and the bytes exist only where the runner is pointed.
+
 The block is one producer behind `secrets.delivery`, which is a SET on the host (DECIDED):
 `embedded` (the key rides in the artifact; `personalize` puts it there), `sidecar` (this block),
 `deploy` (pushed), `external` (a vault, instance metadata). Combining them is normal. A host that
@@ -426,7 +447,7 @@ What the faces ARE is fixed by the format:
 |---|---|---|
 | iso | a file at a path inside the iso9660 | loop mount of `${sysroot}/iso/<path>`, `neededForBoot` |
 | raw / qcow2 | a GPT partition, found by NAME | mount of `/dev/disk/by-partlabel/<name>` |
-| kexec / ipxe | an appended cpio segment in the initrd | the file simply exists at `/` in the initramfs |
+| kexec / ipxe | an appended cpio segment in the initrd — RESERVED by the build as a marker segment, so phase 2 can refuse a tree that never declared one | the file simply exists at `/` in the initramfs |
 
 For `iso` the slot is a file and not the isohybrid partition, because that partition is not a
 handle: a SATA cdrom exposes no partitions at all, virtio does, and a second disk shifts the
@@ -521,6 +542,11 @@ the design, not the test author's taste.
   which neither `#drv-diff` (toplevel only) nor the check suite (checks only) evaluates. The
   check is eval-only — it discards the string context, asking what the names are without asking
   for the things to be made.
+- **Forcing a name is never read as "works": the coverage TABLE says which is which.** Every
+  (host, endpoint) pair carries exactly one declared status — `booted`, `built`, `hole`,
+  `eval-only` — and the suite fails when the table is incomplete against the endpoint set, when
+  a declared hole does not refuse, or when the holes drift from the laws. "It only evaluates" is
+  a visible name someone wrote down, never a default the suite hands out.
 
 ## Open
 
@@ -539,3 +565,10 @@ the design, not the test author's taste.
 7. Encrypted-pool install: the passphrase delivery at install time (the action's
    `/tmp/zfs_root_key` convention) — the e2e installs an unencrypted pool; L3's real case still
    needs the passphrase channel composed.
+8. The host schema seam: nothing yet maps the repo's typed host schema —
+   `realization.root.medium`, `secretsTransport.kind`, `profileModules.live`,
+   `requires.secrets` — onto the dimensions and the composer's record. It is the remaining
+   integration work, and the place the withdrawn branch died (the deletions came last).
+9. The netboot runtime face: the appended cpio store is discarded at switch-root, so a booted
+   kexec/ipxe payload needs either initramfs-as-root or a squashfs-in-initrd mount (the nixpkgs
+   netboot pattern) — a decision to take, then the kexec boot e2e.

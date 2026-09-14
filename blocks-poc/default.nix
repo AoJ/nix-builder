@@ -1,5 +1,5 @@
 let
-  pkgs = import <nixpkgs> { };
+  pkgs = import (import ../nixpkgs-pin.nix) { };
   tools = import ./tools { inherit pkgs; };
   compose = import ./compose.nix { inherit pkgs tools; };
 in

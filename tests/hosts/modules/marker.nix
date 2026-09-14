@@ -30,6 +30,17 @@
       if [ -s /var/lib/sops/age.key ]; then
         echo "E2E-INSTALLED-KEY $(age-keygen -y /var/lib/sops/age.key)" > /dev/console
       fi
+      side=/dev/disk/by-label/SECRETS
+      if [ -e "$side" ]; then
+        mkdir -p /run/sidecar
+        if mount -o ro "$side" /run/sidecar 2>/dev/null; then
+          if [ -s /run/sidecar/sops.age ]; then
+            echo "E2E-SIDECAR $(age-keygen -y /run/sidecar/sops.age)" > /dev/console
+          else
+            echo "E2E-SIDECAR-EMPTY" > /dev/console
+          fi
+        fi
+      fi
       systemctl poweroff --no-block
     '';
   };

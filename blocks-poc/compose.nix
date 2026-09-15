@@ -94,33 +94,35 @@ let
   }) formats);
 
   # What gets installed is ALWAYS the host as it runs; the format only shapes the wrapper.
-  installerFor = rootMode:
+  # The iso wrapper's installer wears the iso face, keyed by the label derived from the
+  # `-iso-install` artifact name through the same ids tool the image block uses.
+  isoInstallLabel = lib.toUpper (tools.ids.volumeId "${host.name}-iso-install:iso");
+  installerFor = { rootMode, isoLabel ? null }:
     (install {
       inherit (host) name system;
       toplevel = host.variants.runtime.toplevel;
       closure = [ host.variants.runtime.toplevel ];
       inherit (host.install) prepare mount pool keyDestination;
-      inherit rootMode;
+      inherit rootMode isoLabel;
     }).system;
 
-  # Memoized per root mode as ATTRIBUTES, not calls: raw and qcow2 wrap the SAME installer,
-  # and a repeated installerFor call is a second full eval-config of an identical system —
-  # measured at ~350 MB of eval heap per host for nothing.
+  # Memoized per face as ATTRIBUTES, not calls: raw and qcow2 wrap the SAME installer, and
+  # a repeated installerFor call is a second full eval-config of an identical system.
   installers = {
-    disk = installerFor "disk";
-    memory = installerFor "memory";
+    disk = installerFor { rootMode = "disk"; };
+    memory = installerFor { rootMode = "memory"; };
+    iso = installerFor { rootMode = "memory"; isoLabel = isoInstallLabel; };
   };
 
   installEndpoints = lib.listToAttrs (map (f: {
     name = "image-${f}-install";
     value =
-      # The memory installer wears the NETBOOT face; packing it into an iso would evaluate
-      # green and boot nothing — the iso-rooted installer face is the remaining named hole.
-      if f == "iso"
-      then throw "image-iso-install ${host.name}: the iso-rooted installer face is open (Open 5)"
-      else
-        let installer = installers.${installerRootModeFor f};
-        in imageFor f (installerShapeFor f) installer.rootMode installer "-install";
+      let
+        installer =
+          if f == "iso" then installers.iso
+          else installers.${installerRootModeFor f};
+      in
+      imageFor f (installerShapeFor f) installer.rootMode installer "-install";
   }) formats);
 
   sidecarFiles = map (f: { inherit (f) target; source = f.runtimeSource; }) host.secrets.files;

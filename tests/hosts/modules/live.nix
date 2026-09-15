@@ -12,9 +12,20 @@
     };
   };
   boot.kernelParams = [ "boot.live" ];
-  boot.postBootCommands = ''
-    if [ -e /nix/store/nix-path-registration ] && [ ! -e /nix/var/nix/db/db.sqlite ]; then
-      ${pkgs.nix}/bin/nix-store --load-db < /nix/store/nix-path-registration
-    fi
-  '';
+  # A SERVICE, not boot.postBootCommands: the systemd stage-2 init never runs the latter.
+  systemd.services.register-nix-paths = {
+    description = "Register Nix Store Paths";
+    unitConfig.DefaultDependencies = false;
+    wantedBy = [ "sysinit.target" ];
+    before = [ "sysinit.target" "shutdown.target" ];
+    after = [ "local-fs.target" ];
+    conflicts = [ "shutdown.target" ];
+    restartIfChanged = false;
+    serviceConfig = { Type = "oneshot"; RemainAfterExit = true; };
+    script = ''
+      if [ -e /nix/store/nix-path-registration ] && [ ! -e /nix/var/nix/db/db.sqlite ]; then
+        ${pkgs.nix}/bin/nix-store --load-db < /nix/store/nix-path-registration
+      fi
+    '';
+  };
 }

@@ -325,8 +325,9 @@ from its single source in `lib/50_install/` through the privileged tools assembl
 copied and nothing reimplements the flow; the block's installer OS is a minimal system of the
 block's own whose one service runs that action against the six inputs (`prepare` doubles as the
 diskoScript role — it creates AND mounts; `mount` is the never-reformat path). The installer
-ROOTS per wrapper: its own disk partition for raw/qcow2, the netboot face for kexec/ipxe — the
-same face the live variant wears, taken from tools. The installer's slot feeds the action's
+ROOTS per wrapper: its own disk partition for raw/qcow2, the netboot face for kexec/ipxe, and
+the iso face keyed by the medium's label for iso — the same faces the live variants wear, taken
+from tools. The installer's slot feeds the action's
 delivered-key convention (`/run/niximilate-sops.age`, and `/tmp/zfs_root_key` for a pool
 passphrase riding the same slot), whichever face delivered it — so phase 2 on an `-install`
 artifact is the same personalize as everywhere else.
@@ -605,18 +606,14 @@ the design, not the test author's taste.
    capacity it would unpack into — and a squashfs-carried closure is not unpacked at all, so
    the bound only bites where a copy really lands in tmpfs. The kernel is ours: the tmpfs size
    is tunable (e.g. 70%), which moves the boundary; the gate reads the real capacity either way.
-5. The iso-rooted installer: nothing left to decide, only to build — the live-iso face applied
-   to the installer profile, the slot delivered from the iso's slot FILE (a third branch of the
-   slot-key hand-over), and the label agreement keyed to the `-iso-install` artifact name. Until
-   built, `image-iso-install` refuses by name.
-6. The install action's takeover (aoj): blocks adopt `niximilate-install` as **action-install**
+5. The install action's takeover (aoj): blocks adopt `niximilate-install` as **action-install**
    (nothing outside the repository's own name says niximilate), it grows an EARLY capability
    gate — refuse up front what the target layout/host cannot do — and an ext4 target. The
    probable mechanism for both storage shapes is disko's own exposed format/mount scripts,
    which the original implementation predates. Ties to 1: the ext4 test host carries most of
    this.
-7. The schema seam is data-only so far: `requires.secrets` → the files/keyTarget record, and
+6. The schema seam is data-only so far: `requires.secrets` → the files/keyTarget record, and
    driving the composer's host records through the seam, remain for integration. Further
    changes are expected here (aoj), too early to describe.
-8. Building (not just evaluating) arm artifacts on an x86 box via binfmt — parked; measured
+7. Building (not just evaluating) arm artifacts on an x86 box via binfmt — parked; measured
    elsewhere to boot in tens of seconds, so it is a capacity question, not a feasibility one.

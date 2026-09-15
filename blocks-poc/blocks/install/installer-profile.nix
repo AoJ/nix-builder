@@ -1,17 +1,18 @@
 # The installing OS — the BLOCK's, not the caller's. A minimal, serial-consoled system
 # whose one job is to run the repo's tested install action against the caller's values,
-# then reboot into what it installed. rootMode picks how the installer itself is rooted:
-# disk (the raw/qcow2 wrapper — its own ext4 partition) or memory (the kexec/ipxe wrapper —
-# the netboot face). The iso wrapper's face is still open.
-{ name, prepare, mount, toplevel, pool, keyDestination, rootMode, niximilateInstall
-, netbootFace }:
+# then reboot into what it installed. The installer roots per wrapper: its own ext4
+# partition (raw/qcow2), the netboot face (kexec/ipxe), or the iso face keyed by the
+# medium's label (iso).
+{ name, prepare, mount, toplevel, pool, keyDestination, rootMode, isoLabel
+, niximilateInstall, netbootFace, isoFace }:
 
 { pkgs, lib, modulesPath, ... }:
 {
   imports = [
     (modulesPath + "/profiles/minimal.nix")
     (modulesPath + "/profiles/qemu-guest.nix")
-  ] ++ lib.optional (rootMode == "memory") netbootFace;
+  ] ++ lib.optional (rootMode == "memory")
+    (if isoLabel != null then isoFace { label = isoLabel; } else netbootFace);
 
   system.stateVersion = "26.05";
   boot.loader.grub.enable = false;
@@ -55,6 +56,12 @@
       if [ -e "$slot" ]; then
         mkdir -p /run/slot
         if mount -o ro "$slot" /run/slot 2>/dev/null; then
+          deliver /run/slot
+          umount /run/slot
+        fi
+      elif [ -s /iso/boot/secrets.img ]; then
+        mkdir -p /run/slot
+        if mount -o ro,loop /iso/boot/secrets.img /run/slot 2>/dev/null; then
           deliver /run/slot
           umount /run/slot
         fi

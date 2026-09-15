@@ -59,8 +59,6 @@ let
 
   unproduced = host // { secrets = host.secrets // { delivery = [ "embedded" "deploy" ]; }; };
 
-  installFaceHoles = map (n: { case = n; refused = refusedEndpoint host n; })
-    [ "image-iso-install" ];
 in
 
 assert lib.assertMsg (e.image-raw.toplevel == e.image-qcow2.toplevel)
@@ -77,10 +75,10 @@ assert lib.assertMsg (!refusedEndpoint zfsHost "image-raw-install")
   "L2 costs nothing on the -install half: the installer's store is the wrapper's own";
 assert lib.assertMsg (refusedEndpoint unproduced "image-raw")
   "a delivery nobody produces must fail at eval";
-assert lib.assertMsg (lib.all (h: h.refused) installFaceHoles)
-  "the iso-rooted installer face is open, so its wrapper refuses at eval: ${builtins.toJSON installFaceHoles}";
 assert lib.assertMsg (!refusedEndpoint host "image-kexec-install")
   "the memory-rooted installer exists: the kexec wrapper evaluates";
+assert lib.assertMsg (!refusedEndpoint host "image-iso-install")
+  "the iso-rooted installer exists: the iso wrapper evaluates";
 
 pkgs.runCommand "test-compose"
   { nativeBuildInputs = [

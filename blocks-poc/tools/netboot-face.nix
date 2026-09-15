@@ -73,9 +73,22 @@ in
     '';
   };
 
-  boot.postBootCommands = ''
-    if [ -e /nix/store/nix-path-registration ] && [ ! -e /nix/var/nix/db/db.sqlite ]; then
-      ${pkgs.nix}/bin/nix-store --load-db < /nix/store/nix-path-registration
-    fi
-  '';
+  # The read-only store carries paths but not the nix DB (it lives at /nix/var/nix/db, a
+  # tmpfs that boots empty). Load the dump nixpkgs ships in the image as a SERVICE — the
+  # systemd stage-2 init never runs boot.postBootCommands. The nixpkgs register pattern.
+  systemd.services.register-nix-paths = {
+    description = "Register Nix Store Paths";
+    unitConfig.DefaultDependencies = false;
+    wantedBy = [ "sysinit.target" ];
+    before = [ "sysinit.target" "shutdown.target" ];
+    after = [ "local-fs.target" ];
+    conflicts = [ "shutdown.target" ];
+    restartIfChanged = false;
+    serviceConfig = { Type = "oneshot"; RemainAfterExit = true; };
+    script = ''
+      if [ -e /nix/store/nix-path-registration ] && [ ! -e /nix/var/nix/db/db.sqlite ]; then
+        ${pkgs.nix}/bin/nix-store --load-db < /nix/store/nix-path-registration
+      fi
+    '';
+  };
 }

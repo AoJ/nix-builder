@@ -120,7 +120,7 @@ let
         # The iso's runtime face needs the medium's LABEL, which only the composer knows —
         # so this variant is a function the composer applies.
         liveIso = label: extract (runtime.extendModules {
-          modules = [ (import ./modules/live-iso.nix { inherit label; }) ];
+          modules = [ (import ./modules/live-iso.nix { inherit label; face = tools.isoFace; }) ];
         });
       };
       inherit install;

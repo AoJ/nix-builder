@@ -45,7 +45,13 @@ in
     rootMode = mkOption {
       type = types.enum [ "disk" "memory" ];
       default = "disk";
-      description = "How the INSTALLER is rooted: its own disk partition, or the netboot face.";
+      description = "How the INSTALLER is rooted: its own disk partition, or a memory face.";
+    };
+
+    isoLabel = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      description = "Set for the iso wrapper: the memory face becomes the iso face, keyed by this label.";
     };
 
     out = mkOption {
@@ -78,8 +84,8 @@ in
         inherit (config) system;
         modules = [
           (import ./installer-profile.nix {
-            inherit (config) name prepare mount toplevel pool keyDestination rootMode;
-            inherit (tools) niximilateInstall netbootFace;
+            inherit (config) name prepare mount toplevel pool keyDestination rootMode isoLabel;
+            inherit (tools) niximilateInstall netbootFace isoFace;
           })
         ];
       };

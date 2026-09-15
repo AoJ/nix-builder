@@ -26,9 +26,9 @@ let
 
   statuses = [ "booted" "built" "hole" "eval-only" ];
 
-  # The holes the LAWS derive: the iso-rooted installer face is open (every host), and a
-  # zfs host's runtime disk endpoints are L2.
-  installFaceHoles = [ "image-iso-install" ];
+  # The holes the LAWS derive: a zfs host's runtime disk endpoints are L2. The install-face
+  # set is empty since the iso installer landed; the shape stays for the next law.
+  installFaceHoles = [ ];
   lawHoles = {
     ext4 = installFaceHoles;
     memory = installFaceHoles;
@@ -47,7 +47,7 @@ let
       image-ipxe = "eval-only";
       image-raw-install = "eval-only";
       image-qcow2-install = "eval-only";
-      image-iso-install = "hole";
+      image-iso-install = "eval-only";
       image-kexec-install = "eval-only";
       image-ipxe-install = "eval-only";
       image-secrets-vfat = "booted";
@@ -67,7 +67,7 @@ let
       image-ipxe = "eval-only";
       image-raw-install = "eval-only";
       image-qcow2-install = "eval-only";
-      image-iso-install = "hole";
+      image-iso-install = "eval-only";
       image-kexec-install = "eval-only";
       image-ipxe-install = "eval-only";
       image-secrets-vfat = "eval-only";
@@ -87,14 +87,14 @@ let
       image-ipxe = "eval-only";
       image-raw-install = "booted";
       image-qcow2-install = "eval-only";
-      image-iso-install = "hole";
+      image-iso-install = "booted";
       image-kexec-install = "booted";
       image-ipxe-install = "eval-only";
       image-secrets-vfat = "eval-only";
       image-secrets-iso = "eval-only";
       image-secrets-json = "eval-only";
       image-personalize = "booted";
-      image-personalize-iso = "eval-only";
+      image-personalize-iso = "booted";
       image-personalize-kexec = "booted";
       closure = "booted";
       closure-live = "eval-only";
@@ -107,7 +107,7 @@ let
       image-ipxe = "eval-only";
       image-raw-install = "eval-only";
       image-qcow2-install = "eval-only";
-      image-iso-install = "hole";
+      image-iso-install = "eval-only";
       image-kexec-install = "booted";
       image-ipxe-install = "eval-only";
       image-secrets-vfat = "eval-only";
@@ -127,7 +127,7 @@ let
       image-ipxe = "eval-only";
       image-raw-install = "eval-only";
       image-qcow2-install = "eval-only";
-      image-iso-install = "hole";
+      image-iso-install = "eval-only";
       image-kexec-install = "eval-only";
       image-ipxe-install = "eval-only";
       image-secrets-vfat = "eval-only";
@@ -147,7 +147,7 @@ let
       image-ipxe = "eval-only";
       image-raw-install = "eval-only";
       image-qcow2-install = "eval-only";
-      image-iso-install = "hole";
+      image-iso-install = "eval-only";
       image-kexec-install = "eval-only";
       image-ipxe-install = "eval-only";
       image-secrets-vfat = "eval-only";

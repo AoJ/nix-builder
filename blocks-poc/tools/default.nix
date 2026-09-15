@@ -21,4 +21,5 @@ in
   # The netboot runtime face, shared by the live variant and the memory-rooted installer:
   # a nixos module is data, and the face belongs to whoever declares the read-only store.
   netbootFace = ./netboot-face.nix;
+  isoFace = import ./iso-face.nix;
 }

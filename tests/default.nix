@@ -21,6 +21,7 @@ let
     install-cycle = import ./e2e-install-cycle.nix { inherit pkgs compose hosts; };
     deploy-install = import ./e2e-deploy-install.nix { inherit pkgs compose hosts; };
     install-encrypted = import ./e2e-install-encrypted.nix { inherit pkgs compose hosts; };
+    iso-install = import ./e2e-iso-install.nix { inherit pkgs compose hosts; };
   };
 
   coverage = import ./coverage.nix {

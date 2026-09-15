@@ -146,7 +146,7 @@ same for every host that has one, and names its own replacement.
 |---|---|---|
 | `image` | a system, a format | the artifact, and the toplevel that went into it |
 | `install` | a closure and how to place it | a system that installs it |
-| `secrets` | files, a medium | a sidecar file |
+| `secrets` | files, a sidecar format | a sidecar runner |
 | `personalize` | a finished artifact, files | that artifact with its slot filled |
 
 `#closure` / `#derivation` / `#closure-live` / `#derivation-live` are **not blocks**. They are
@@ -159,7 +159,7 @@ What the endpoints map to:
 |---|---|
 | `#image-<format>` | `image(host, format)` |
 | `#image-<format>-install` | `image(install(host), format)` |
-| `#image-secrets-<medium>` | `secrets(…, medium)` |
+| `#image-secrets-<format>` | `secrets(…, sidecarFormat)` |
 | `#image-personalize` | `personalize(artifact, slot, files)` |
 | `#closure` / `#derivation` | the host's toplevel, named |
 | `#closure-live` / `#derivation-live` | the toplevel `image` returned for a live format |
@@ -390,7 +390,9 @@ carrying these into the repo's module tree at integration.
 Files in, a sidecar out. Nothing boots and there is no partition table.
 
 A sidecar is data placed beside an image or file for the consumer to take. **Whether the consumer
-mounts it or reads it is a property of the medium, not part of what a sidecar is**.
+mounts it or reads it is a property of the sidecar FORMAT, not part of what a sidecar is**. The
+word "medium" does not appear in the blocks: it already means something else in this repo
+(`realization.root.medium`), and one word may not carry two meanings.
 
 **Its output is a runner, not a derivation** — the same argument personalize carries: a secret
 in a derivation is a secret in the store, and a sidecar exists to carry secrets. Phase-one
@@ -413,6 +415,23 @@ slot's first check.
 For an `-install` image the consumer is the **install script**, not the target OS. That is why L2
 costs nothing: the installer's own slot is a plain, writable, well-known place, and the pool is
 created on the target with the real passphrase — no placeholder key in a cacheable derivation.
+
+**Install-time secrets ride the same delivery set (DECIDED, aoj 2026-09-15).** The bricks
+combine like everything else: the pool passphrase may be `embedded` in the installer's slot
+without complication, or arrive `deploy`-time (colmena-shaped push). A console prompt is NOT in
+the set and will not be implemented — the goal is full automation, and a host that wants an
+interactive unlock changes its zfs layout, not the delivery.
+
+**The safe combination is the HOST's and DEPLOY's responsibility, never blocks'** (DECIDED).
+Blocks do every step safely and guarantee one thing: no secret ever remains anywhere except the
+output artifact — no store path, no leftover temp state. Whether an embedded key on an install
+medium is protection enough is a per-host call: it already achieves "no plaintext data at rest"
+(the image installs over itself and is overwritten on first boot), and a host needing more
+reaches for deploy-time delivery, hardware encryption, or an HSM — outside blocks either way.
+
+**Where the secrets come from**: openbao. The deploy script obtains them through its host role
+at deploy time and hands them to the runners as OUTSIDE input — which is exactly why `secrets`
+and `personalize` take runtime path strings, never derivations.
 
 ## personalize
 
@@ -574,9 +593,10 @@ the design, not the test author's taste.
    memory-rooted variant — the live-variant story applied to the installer.
 6. A non-zfs install target: `niximilate-install` is pool-centric (probe, export, the pool
    argument), so an ext4 target has no install path yet.
-7. Encrypted-pool install: the passphrase delivery at install time (the action's
-   `/tmp/zfs_root_key` convention) — the e2e installs an unencrypted pool; L3's real case still
-   needs the passphrase channel composed.
+7. Encrypted-pool install, DECIDED and unbuilt: the passphrase is one more file in the delivery
+   set (embedded in the installer's slot, or deploy-pushed) feeding the action's
+   `/tmp/zfs_root_key` convention. What remains is the implementation and its e2e — the current
+   cycle installs an unencrypted pool.
 8. The host schema seam exists (see its section) but is data-only so far: `requires.secrets`
    → the files/keyTarget record, and driving the composer's host records THROUGH the seam,
    remain — that wiring is the integration step itself, and the place the withdrawn branch
@@ -585,3 +605,5 @@ the design, not the test author's taste.
    kexec/ipxe payload needs either initramfs-as-root or a squashfs-in-initrd mount — nixpkgs
    uses squashfs-in-initrd everywhere, which is precedent, not a decision; aoj is weighing the
    consequences. The kexec boot e2e and the memory-rooted installer both wait on this.
+10. Building (not just evaluating) arm artifacts on an x86 box via binfmt — a want to try once
+   the blocks settle; today the arm row is eval-only and says so.

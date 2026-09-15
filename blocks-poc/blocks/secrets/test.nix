@@ -8,10 +8,10 @@ let
   files = [ { target = "/sops.age"; source = "${fixture}"; } ];
 
   runFor = args: lib.getExe (secrets ({ inherit files; } // args)).run;
-  asVfat = runFor { name = "fixture"; medium = "vfat"; };
-  asIso = runFor { name = "fixture"; medium = "iso"; };
-  asJson = runFor { name = "fixture"; medium = "json"; };
-  elsewhere = runFor { name = "other"; medium = "vfat"; };
+  asVfat = runFor { name = "fixture"; sidecarFormat = "vfat"; };
+  asIso = runFor { name = "fixture"; sidecarFormat = "iso"; };
+  asJson = runFor { name = "fixture"; sidecarFormat = "json"; };
+  elsewhere = runFor { name = "other"; sidecarFormat = "vfat"; };
 in
 pkgs.runCommand "test-secrets"
   { nativeBuildInputs = [ pkgs.mtools pkgs.xorriso pkgs.file pkgs.coreutils pkgs.jq ]; }
@@ -23,7 +23,7 @@ pkgs.runCommand "test-secrets"
     ${asIso} side.iso
     ${asJson} side.json
 
-    echo "== the consumer finds the file where it was declared, on every medium =="
+    echo "== the consumer finds the file where it was declared, in every sidecar format =="
     mcopy -i side.img ::/sops.age got-vfat
     cmp got-vfat ${fixture}
     xorriso -osirrox on -indev side.iso -extract /sops.age got-iso 2>/dev/null

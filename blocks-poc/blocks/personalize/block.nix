@@ -80,5 +80,5 @@ in
         slot_name=${lib.escapeShellArg config.slot.name}
         manifest=${manifest}
       '' [ pkgs.coreutils pkgs.findutils pkgs.cpio ];
-    }.${config.slot.medium};
+    }.${config.slot.destination};
 }

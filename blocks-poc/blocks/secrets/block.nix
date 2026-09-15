@@ -18,9 +18,9 @@ in
       });
     };
 
-    medium = mkOption {
+    sidecarFormat = mkOption {
       type = types.enum [ "vfat" "iso" "json" ];
-      description = "How the consumer takes the data. Mounting is one way of taking it.";
+      description = "The form the consumer takes the sidecar in: a filesystem it mounts, or a format it reads.";
     };
 
     out = mkOption {
@@ -48,7 +48,7 @@ in
         text = vars + builtins.readFile script;
       };
 
-      byMedium = {
+      byFormat = {
         vfat = runner ./sidecar-vfat.sh ''
           fat_image=${lib.getExe tools.fatImageApp}
           label=SECRETS
@@ -68,7 +68,7 @@ in
       };
     in
     {
-      run = byMedium.${config.medium};
-      fs = { vfat = "vfat"; iso = "iso9660"; json = "json"; }.${config.medium};
+      run = byFormat.${config.sidecarFormat};
+      fs = { vfat = "vfat"; iso = "iso9660"; json = "json"; }.${config.sidecarFormat};
     };
 }

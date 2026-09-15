@@ -108,7 +108,7 @@ pkgs.runCommand "test-compose"
     mcopy -i work.img@@"$off" ::/sops.age got
     cmp got ${fixture}/host.key
 
-    echo "== the sidecars are RUNNERS, and every medium reads back =="
+    echo "== the sidecars are RUNNERS, and every sidecar format reads back =="
     ${lib.getExe e.image-secrets-vfat.run} side.img
     mcopy -i side.img ::/sops.age side
     cmp side ${fixture}/host.key

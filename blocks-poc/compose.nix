@@ -137,17 +137,17 @@ runtimeEndpoints // installEndpoints // {
   image-secrets-vfat = secrets {
     inherit (host) name;
     files = sidecarFiles;
-    medium = "vfat";
+    sidecarFormat = "vfat";
   };
   image-secrets-iso = secrets {
     inherit (host) name;
     files = sidecarFiles;
-    medium = "iso";
+    sidecarFormat = "iso";
   };
   image-secrets-json = secrets {
     inherit (host) name;
     files = sidecarFiles;
-    medium = "json";
+    sidecarFormat = "json";
   };
 
   # Bound to the host's DELIVERABLE: for a zfs host the -install artifact (L2 — the runtime

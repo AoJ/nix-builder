@@ -166,7 +166,7 @@ in
           file = disk;
           layout = disk.layout;
           slot = if config.slot == null then null
-                 else { medium = "partition"; name = config.slot.name; fs = "vfat"; };
+                 else { destination = "partition"; name = config.slot.name; fs = "vfat"; };
         };
         qcow2 = byFormat.raw // {
           file = pkgs.runCommand "${config.name}.qcow2"
@@ -185,13 +185,13 @@ in
           };
           layout = null;
           slot = if config.slot == null then null
-                 else { medium = "file"; path = slotFile; fs = "vfat"; };
+                 else { destination = "file"; path = slotFile; fs = "vfat"; };
         };
         kexec = {
           file = tree;
           layout = null;
           slot = if config.slot == null then null
-                 else { medium = "initrd-append"; name = config.slot.name; };
+                 else { destination = "initrd-append"; name = config.slot.name; };
         };
         ipxe = byFormat.kexec;
       };

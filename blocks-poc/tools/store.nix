@@ -24,22 +24,11 @@ let
     text = builtins.readFile ./store-ext4.sh;
   };
 
-  cpioTool = bashTool {
-    name = "store-cpio";
-    runtimeInputs = [ pkgs.coreutils pkgs.findutils pkgs.cpio ];
-    text = builtins.readFile ./store-cpio.sh;
-  };
-
   ext4 = pkgs.runCommand "store-ext4.img" { }
     ''
       ${ext4Tool}/bin/store-ext4 "$out" ${lib.escapeShellArg label} \
         ${lib.escapeShellArg uuid} ${closure}/registration ${closure}/store-paths \
         ${lib.optionalString (profile != null) "${profile}"}
-    '';
-
-  cpio = pkgs.runCommand "store.cpio" { }
-    ''
-      ${cpioTool}/bin/store-cpio "$out" ${closure}/registration ${closure}/store-paths
     '';
 
   squashfs = pkgs.runCommand "store-squashfs.img"
@@ -56,7 +45,7 @@ let
     '';
 in
 {
-  img = { inherit ext4 squashfs cpio; }.${shape};
+  img = { inherit ext4 squashfs; }.${shape};
   fs = shape;
   needsBootUnit = shape != "ext4";
   inherit registrationPath uuid;

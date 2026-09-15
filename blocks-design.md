@@ -295,7 +295,8 @@ optional slot partition; `qcow2` is the same disk in a different envelope. `iso`
 initrd and loader entries INSIDE the ESP image, points an El Torito record at it, and marks the
 same image in a GPT so the file also boots dd'd to a stick (the nixpkgs pattern); the iso9660
 itself carries the squashfs store and the slot file. `kexec` / `ipxe` are one tree — kernel, the
-caller's initrd with the store cpio appended, and both loader descriptors.
+caller's initrd with the squashfs store appended as a cpio segment at the nixpkgs name
+(`/nix-store.squashfs` — DECIDED: compressed and lazily read), and both loader descriptors.
 
 ## install
 
@@ -349,7 +350,7 @@ does — the store is at `/nix/store`, the database at `/nix/var/nix/db`:
 |---|---|
 | ext4 (writable) | both live on one writable filesystem, so the database is written **at build time** and the image carries it |
 | squashfs (read-only) | the image is mounted read-only at `/nix/store`, and the database's place is a tmpfs that boots empty — so the image carries only a dump, and a **unit loads it at every boot** |
-| cpio (netboot) | the paths land on the initramfs tmpfs, but the database still boots empty — the archive carries the dump at the same constant path, and the same kind of unit loads it |
+| squashfs in the initrd (netboot) | the same read-only image, ridden as an appended cpio segment and loop-mounted by the netboot FACE (`tools/netboot-face.nix` — tmpfs root, overlayed store, the registration, and the initrd-slot hand-over, one module, image-media priority) |
 
 With a `profile` toplevel the ext4 shape is a bootable NixOS ROOT, not just a store filesystem:
 generation link + `system` profile symlink (what `systemd-boot-builder` reads on the first
@@ -466,7 +467,7 @@ What the faces ARE is fixed by the format:
 |---|---|---|
 | iso | a file at a path inside the iso9660 | loop mount of `${sysroot}/iso/<path>`, `neededForBoot` |
 | raw / qcow2 | a GPT partition, found by NAME | mount of `/dev/disk/by-partlabel/<name>` |
-| kexec / ipxe | an appended cpio segment in the initrd — RESERVED by the build as a marker segment, so phase 2 can refuse a tree that never declared one | the file simply exists at `/` in the initramfs |
+| kexec / ipxe | an appended cpio segment in the initrd — RESERVED by the build as a marker segment, so phase 2 can refuse a tree that never declared one | stage 1 hands the appended files over at `/run/initrd-slot` — initramfs contents are discarded at switch-root, so the hand-over IS the face |
 
 For `iso` the slot is a file and not the isohybrid partition, because that partition is not a
 handle: a SATA cdrom exposes no partitions at all, virtio does, and a second disk shifts the
@@ -601,9 +602,8 @@ the design, not the test author's taste.
    → the files/keyTarget record, and driving the composer's host records THROUGH the seam,
    remain — that wiring is the integration step itself, and the place the withdrawn branch
    died (the deletions came last).
-9. The netboot runtime face: the appended cpio store is discarded at switch-root, so a booted
-   kexec/ipxe payload needs either initramfs-as-root or a squashfs-in-initrd mount — nixpkgs
-   uses squashfs-in-initrd everywhere, which is precedent, not a decision; aoj is weighing the
-   consequences. The kexec boot e2e and the memory-rooted installer both wait on this.
+9. RESOLVED (DECIDED: squashfs-in-initrd — compressed, lazily read): the face is
+   `tools/netboot-face.nix`, the kexec payload boots in e2e, and the memory-rooted installer
+   is unblocked.
 10. Building (not just evaluating) arm artifacts on an x86 box via binfmt — a want to try once
    the blocks settle; today the arm row is eval-only and says so.

@@ -24,8 +24,8 @@ let
     raw = [ "ext4" "squashfs" ];
     qcow2 = [ "ext4" "squashfs" ];
     iso = [ "squashfs" ];
-    kexec = [ "cpio" ];
-    ipxe = [ "cpio" ];
+    kexec = [ "squashfs" ];
+    ipxe = [ "squashfs" ];
   };
   formats = lib.attrNames legal;
   slots = [ null { name = "secrets"; sizeMiB = 4; } ];
@@ -69,7 +69,7 @@ let
   # A wrong composition fails at eval, in image — not at boot on the machine. The sets are
   # the COMPLEMENTS of the legal maps: every shape a format does not take, and every root
   # mode it cannot boot.
-  allShapes = [ "ext4" "squashfs" "cpio" ];
+  allShapes = [ "ext4" "squashfs" ];
   refused = f: s: r:
     !(builtins.tryEval (image (payload // {
       name = "bad"; format = f; storeShape = s; rootMode = r;
@@ -133,14 +133,19 @@ let
   '';
 
   netbootChecks = c: ''
-    echo "== ${c.built.file.name}: one payload, both descriptors, store cpio appended =="
+    echo "== ${c.built.file.name}: one payload, both descriptors, squashfs store appended =="
     [ -x ${c.built.file}/kexec.sh ]
     grep -q 'console=ttyS0' ${c.built.file}/kexec.sh
     grep -q 'console=ttyS0' ${c.built.file}/boot.ipxe
     n="$(stat -c%s ${payload.initrd})"
     cmp -n "$n" ${c.built.file}/initrd ${payload.initrd}
     tail -c +$(( n + 1 )) ${c.built.file}/initrd \
-      | cpio -t --quiet | grep -q 'nix/store/nix-path-registration'
+      | cpio -t --quiet | grep -qx 'nix-store.squashfs'
+    rm -rf seg && mkdir seg
+    tail -c +$(( n + 1 )) ${c.built.file}/initrd \
+      | (cd seg && cpio -i --quiet 2>/dev/null)
+    unsquashfs -l seg/nix-store.squashfs | grep -q nix-path-registration
+    unsquashfs -l seg/nix-store.squashfs | grep -q hello
     ${if c.slotted then ''
       grep -aqF -- '.slot-secrets' ${c.built.file}/initrd
     '' else ''
@@ -161,7 +166,7 @@ let
   # kexec and ipxe are ONE payload: for every (shape, slot) the two trees must be equal in
   # CONTENT (their store paths differ, their bytes may not).
   pairChecks = lib.concatMap (slot: [
-    "diff -r ${(build "kexec" "cpio" slot).file} ${(build "ipxe" "cpio" slot).file}\n"
+    "diff -r ${(build "kexec" "squashfs" slot).file} ${(build "ipxe" "squashfs" slot).file}\n"
   ]) slots;
 
   fixtureRaw = build "raw" "ext4" null;

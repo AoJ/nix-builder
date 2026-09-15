@@ -5,7 +5,6 @@ let
 
   asExt4 = store { name = "fixture"; rootPaths = [ pkgs.hello ]; shape = "ext4"; label = "nixos"; };
   asSquash = store { name = "fixture"; rootPaths = [ pkgs.hello ]; shape = "squashfs"; label = "nixos"; };
-  asCpio = store { name = "fixture"; rootPaths = [ pkgs.hello ]; shape = "cpio"; label = "nixos"; };
   asRoot = store {
     name = "fixture"; rootPaths = [ pkgs.hello ]; shape = "ext4"; label = "nixos";
     profile = pkgs.hello;
@@ -19,7 +18,7 @@ let
   elsewhere = store { name = "other"; rootPaths = [ pkgs.hello ]; shape = "ext4"; label = "nixos"; };
 in
 pkgs.runCommand "test-store"
-  { nativeBuildInputs = [ pkgs.e2fsprogs pkgs.squashfsTools pkgs.cpio ]; }
+  { nativeBuildInputs = [ pkgs.e2fsprogs pkgs.squashfsTools ]; }
   ''
     set -euo pipefail
 
@@ -39,14 +38,10 @@ pkgs.runCommand "test-store"
     debugfs -R "stat /etc/NIXOS" ${asRoot.img} > /dev/null 2>&1
     ! debugfs -R "stat /etc" ${asExt4.img} > /dev/null 2>&1
 
-    echo "== cpio rides in an initrd, and it too carries the dump at the same constant =="
-    cpio -t --quiet < ${asCpio.img} | grep -q 'nix/store/nix-path-registration'
-    [ ${builtins.toJSON asCpio.needsBootUnit} = true ]
 
     echo "== built twice, byte for byte the same =="
     cmp ${asExt4.img} ${again asExt4.img}
     cmp ${asSquash.img} ${again asSquash.img}
-    cmp ${asCpio.img} ${again asCpio.img}
 
     echo "== two names, two identities: no shared constant =="
     mine="$(dumpe2fs -h ${asExt4.img} 2>/dev/null | awk -F': *' '/Filesystem UUID/ { print $2 }')"

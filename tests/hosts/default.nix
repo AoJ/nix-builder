@@ -2,7 +2,7 @@
 # record is produced by the one explicit extraction. The set spans the dimensions — disk vs
 # memory, ext4 vs squashfs vs zfs, secrets delivered vs none — because that is what a
 # hand-assembled record cannot prove.
-{ pkgs }:
+{ pkgs, tools }:
 
 let
   fixture = import ../../blocks-poc/blocks/personalize/fixture.nix { inherit pkgs; };
@@ -81,12 +81,16 @@ let
       # The real extendModules step: the live variant is the host plus the live module,
       # evaluated by the composer's side of the world — never inside a block.
       live = runtime.extendModules { modules = [ ./modules/live.nix ]; };
+      liveNetboot = runtime.extendModules {
+        modules = [ (import ./modules/live-netboot.nix { face = tools.netbootFace; }) ];
+      };
     in
     {
       inherit name secrets system;
       variants = {
         runtime = extract runtime // { inherit storage; };
         live = extract live;
+        liveNetboot = extract liveNetboot;
         # The iso's runtime face needs the medium's LABEL, which only the composer knows —
         # so this variant is a function the composer applies.
         liveIso = label: extract (runtime.extendModules {

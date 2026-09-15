@@ -54,7 +54,7 @@ in
     };
 
     storeShape = mkOption {
-      type = types.enum [ "ext4" "squashfs" "cpio" ];
+      type = types.enum [ "ext4" "squashfs" ];
       description = "Picked by the composer, which knows the format it is asking for; validated here.";
     };
 
@@ -96,8 +96,8 @@ in
         raw = [ "ext4" "squashfs" ];
         qcow2 = [ "ext4" "squashfs" ];
         iso = [ "squashfs" ];
-        kexec = [ "cpio" ];
-        ipxe = [ "cpio" ];
+        kexec = [ "squashfs" ];
+        ipxe = [ "squashfs" ];
       };
       legalRoot = {
         raw = [ "disk" "memory" ];
@@ -157,7 +157,7 @@ in
 
       tree = netboot {
         inherit (config) name kernel initrd kernelParams;
-        storeCpio = store.img;
+        storeImg = store.img;
         slotName = if config.slot == null then null else config.slot.name;
       };
 

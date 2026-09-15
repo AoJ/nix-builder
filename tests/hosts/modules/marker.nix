@@ -26,6 +26,13 @@
         if mount -o ro,loop /iso/boot/secrets.img /run/slot 2>/dev/null; then
           report_slot
         fi
+      elif [ -d /run/initrd-slot ]; then
+        if [ -s /run/initrd-slot/sops.age ]; then
+          cp /run/initrd-slot/sops.age /run/slot/sops.age
+          report_slot
+        else
+          echo "E2E-KEY-EMPTY" > /dev/console
+        fi
       fi
       if [ -s /var/lib/sops/age.key ]; then
         echo "E2E-INSTALLED-KEY $(age-keygen -y /var/lib/sops/age.key)" > /dev/console

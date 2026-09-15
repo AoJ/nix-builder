@@ -19,7 +19,7 @@ let
     "image-iso-install" "image-raw-install" "image-qcow2-install"
     "image-kexec-install" "image-ipxe-install"
     "image-secrets-vfat" "image-secrets-iso" "image-secrets-json"
-    "image-personalize" "image-personalize-iso"
+    "image-personalize" "image-personalize-iso" "image-personalize-kexec"
     "closure" "closure-live"
   ];
 
@@ -41,7 +41,7 @@ let
       image-raw = "booted";
       image-iso = "booted";
       image-qcow2 = "eval-only";
-      image-kexec = "eval-only";
+      image-kexec = "booted";
       image-ipxe = "eval-only";
       image-raw-install = "eval-only";
       image-qcow2-install = "eval-only";
@@ -53,6 +53,7 @@ let
       image-secrets-json = "eval-only";
       image-personalize = "booted";
       image-personalize-iso = "booted";
+      image-personalize-kexec = "booted";
       closure = "booted";
       closure-live = "booted";
     };
@@ -72,6 +73,7 @@ let
       image-secrets-json = "eval-only";
       image-personalize = "eval-only";
       image-personalize-iso = "eval-only";
+      image-personalize-kexec = "eval-only";
       closure = "booted";
       closure-live = "eval-only";
     };
@@ -91,6 +93,7 @@ let
       image-secrets-json = "eval-only";
       image-personalize = "booted";
       image-personalize-iso = "eval-only";
+      image-personalize-kexec = "eval-only";
       closure = "booted";
       closure-live = "eval-only";
     };
@@ -110,6 +113,7 @@ let
       image-secrets-json = "eval-only";
       image-personalize = "eval-only";
       image-personalize-iso = "eval-only";
+      image-personalize-kexec = "eval-only";
       closure = "eval-only";
       closure-live = "eval-only";
     };
@@ -129,6 +133,7 @@ let
       image-secrets-json = "eval-only";
       image-personalize = "eval-only";
       image-personalize-iso = "eval-only";
+      image-personalize-kexec = "eval-only";
       closure = "eval-only";
       closure-live = "eval-only";
     };

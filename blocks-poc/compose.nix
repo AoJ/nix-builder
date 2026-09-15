@@ -22,6 +22,8 @@ let
   isoLabel = lib.toUpper (tools.ids.volumeId "${host.name}-iso:iso");
   variantFor = format:
     if format == "iso" && host.variants ? liveIso then host.variants.liveIso isoLabel
+    else if builtins.elem format [ "kexec" "ipxe" ] && host.variants ? liveNetboot
+    then host.variants.liveNetboot
     else if builtins.elem format liveFormats then host.variants.live
     else host.variants.runtime;
 
@@ -39,8 +41,8 @@ let
     else host.variants.runtime.storage;
   storeShapeFor = format: {
     iso = "squashfs";
-    kexec = "cpio";
-    ipxe = "cpio";
+    kexec = "squashfs";
+    ipxe = "squashfs";
     raw = diskShape;
     qcow2 = diskShape;
   }.${format};
@@ -50,8 +52,8 @@ let
   # The memory-rooted installer does not exist yet: install refuses it by name.
   installerShapeFor = format: {
     iso = "squashfs";
-    kexec = "cpio";
-    ipxe = "cpio";
+    kexec = "squashfs";
+    ipxe = "squashfs";
     raw = "ext4";
     qcow2 = "ext4";
   }.${format};
@@ -158,6 +160,7 @@ runtimeEndpoints // installEndpoints // {
      then installEndpoints.image-raw-install.slot
      else runtimeEndpoints.image-raw.slot);
   image-personalize-iso = personalizeFor "${host.name}-iso" runtimeEndpoints.image-iso.slot;
+  image-personalize-kexec = personalizeFor "${host.name}-kexec" runtimeEndpoints.image-kexec.slot;
 
   # Names for what a block already returned — lookups, never a second evaluation.
   closure = host.variants.runtime.toplevel;

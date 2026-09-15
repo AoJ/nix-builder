@@ -8,7 +8,7 @@ let
   pkgs = import (import ../nixpkgs-pin.nix) { };
   tools = import ../blocks-poc/tools { inherit pkgs; };
   compose = import ../blocks-poc/compose.nix { inherit pkgs tools; };
-  hosts = import ./hosts { inherit pkgs; };
+  hosts = import ./hosts { inherit pkgs tools; };
   coverage = import ./coverage.nix { inherit pkgs; };
 in
 {
@@ -23,4 +23,5 @@ in
   e2e-personalize-boot = import ./e2e-personalize-boot.nix { inherit pkgs compose hosts; };
   e2e-install-cycle = import ./e2e-install-cycle.nix { inherit pkgs compose hosts; };
   e2e-live-iso = import ./e2e-live-iso.nix { inherit pkgs compose hosts; };
+  e2e-kexec-boot = import ./e2e-kexec-boot.nix { inherit pkgs compose hosts; };
 }

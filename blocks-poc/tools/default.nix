@@ -18,4 +18,7 @@ in
   # clean export), consumed from its single source — no copy. The install block's installer
   # OS runs it; nothing reimplements the flow.
   niximilateInstall = import ../../../../lib/50_install/niximilateInstallApp.nix pkgs;
+  # The netboot runtime face, shared by the live variant and the memory-rooted installer:
+  # a nixos module is data, and the face belongs to whoever declares the read-only store.
+  netbootFace = ./netboot-face.nix;
 }

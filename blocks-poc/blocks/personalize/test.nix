@@ -28,11 +28,11 @@ let
     slot = { name = "secrets"; sizeMiB = 4; };
   });
   tree = image (payload // {
-    name = "fixture"; format = "kexec"; storeShape = "cpio"; rootMode = "memory";
+    name = "fixture"; format = "kexec"; storeShape = "squashfs"; rootMode = "memory";
     slot = { name = "secrets"; sizeMiB = 4; };
   });
   bareTree = image (payload // {
-    name = "fixture"; format = "kexec"; storeShape = "cpio"; rootMode = "memory";
+    name = "fixture"; format = "kexec"; storeShape = "squashfs"; rootMode = "memory";
   });
 
   # The throwaway key IS the planted file, so the whole chain is real: the runner derives

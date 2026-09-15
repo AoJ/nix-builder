@@ -587,17 +587,36 @@ the design, not the test author's taste.
 
 ## Open
 
-1. The slot's descriptor — what a layout states, and what `image` reads it from — and the slot's
-   OWNERSHIP: the plan records aoj deciding "the caller composes the slot; no module declares
-   one", while this design gives the slot to whoever owns the storage shape. The two coincide
-   while `image` provides every slot; the divergence becomes real when an ext4 layout arrives.
-2. Whether a validation gate is wanted beyond the two checks above, and where it sits.
-3. What belongs in `tools` besides the bash tooling and the store.
-4. The self-install RAM bound wants an eval-time assertion: closure size against the tmpfs cap —
-   a live ISO's `/` and `/nix/.rw-store` each default to 50% of RAM and share the same pages.
-5. The iso-rooted installer face; until it exists, `image-iso-install` refuses by name.
-6. A non-zfs install target: `niximilate-install` is pool-centric (probe, export, the pool
-   argument), so an ext4 target has no install path yet.
+1. The slot's mechanism for a layout (DECIDED in direction, aoj 2026-09-15: the COMPOSER is
+   responsible for the slot descriptor — it knows it, or extracts it from the host/layout, and
+   a layout that will not cooperate is an eval error, because the downstream blocks cannot run).
+   What is open is the extraction mechanism for the coming ext4 layout — perhaps the layout
+   exposes an attribute naming which partition is the slot; nothing better is on the table yet.
+   An ext4 test host is the vehicle to settle it.
+2. A third validation gate, `#verify`-shaped: take a FINISHED artifact plus the host's
+   declaration and check they correspond — format, slot present and formatted, closure carried —
+   independently of the build path that produced it. The two existing checks each catch one
+   failure (eval: nothing composed a slot; personalize: the artifact drifted from its
+   declaration), but neither validates an artifact someone hands you. Whether this gate is
+   wanted at all, and whether it sits in deploy or as its own app, is aoj's call.
+3. What belongs in `tools` besides the current set — a placeholder so additions stay conscious.
+4. The self-install closure bound is the INSTALL SCRIPT's safe gate, not an eval assertion
+   (aoj): before any mutable operation it compares the carried closure against the actual tmpfs
+   capacity it would unpack into — and a squashfs-carried closure is not unpacked at all, so
+   the bound only bites where a copy really lands in tmpfs. The kernel is ours: the tmpfs size
+   is tunable (e.g. 70%), which moves the boundary; the gate reads the real capacity either way.
+5. The iso-rooted installer: nothing left to decide, only to build — the live-iso face applied
+   to the installer profile, the slot delivered from the iso's slot FILE (a third branch of the
+   slot-key hand-over), and the label agreement keyed to the `-iso-install` artifact name. Until
+   built, `image-iso-install` refuses by name.
+6. The install action's takeover (aoj): blocks adopt `niximilate-install` as **action-install**
+   (nothing outside the repository's own name says niximilate), it grows an EARLY capability
+   gate — refuse up front what the target layout/host cannot do — and an ext4 target. The
+   probable mechanism for both storage shapes is disko's own exposed format/mount scripts,
+   which the original implementation predates. Ties to 1: the ext4 test host carries most of
+   this.
 7. The schema seam is data-only so far: `requires.secrets` → the files/keyTarget record, and
-   driving the composer's host records through the seam, remain for integration.
-8. Building (not just evaluating) arm artifacts on an x86 box via binfmt.
+   driving the composer's host records through the seam, remain for integration. Further
+   changes are expected here (aoj), too early to describe.
+8. Building (not just evaluating) arm artifacts on an x86 box via binfmt — parked; measured
+   elsewhere to boot in tens of seconds, so it is a capacity question, not a feasibility one.

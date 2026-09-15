@@ -38,8 +38,22 @@ pkgs.runCommand "${name}-netboot" { nativeBuildInputs = [ pkgs.coreutils ]; }
     set -euo pipefail
     mkdir "$out"
     cp ${kernel} "$out/kernel"
-    cat ${initrd} ${storeSeg} ${lib.optionalString (slotName != null) slotSeg} \
-      > "$out/initrd"
+
+    # Every appended cpio segment must start 4-byte ALIGNED or the kernel's initramfs
+    # parser reads a misaligned magic and stops — measured: a base initrd of length ≡1
+    # (mod 4) silently dropped the segment after the store. Zero padding between archives
+    # is what the format is specified to skip.
+    append_aligned() {
+      sz="$(stat -c%s "$out/initrd")"
+      pad=$(( (4 - sz % 4) % 4 ))
+      if [ "$pad" != 0 ]; then
+        head -c "$pad" /dev/zero >> "$out/initrd"
+      fi
+      cat "$1" >> "$out/initrd"
+    }
+    cat ${initrd} > "$out/initrd"
+    append_aligned ${storeSeg}
+    ${lib.optionalString (slotName != null) "append_aligned ${slotSeg}"}
 
     cat > "$out/kexec.sh" <<SH
     #!/bin/sh

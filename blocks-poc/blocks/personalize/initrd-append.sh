@@ -28,6 +28,13 @@ while IFS=$'\t' read -r src dest; do
   cp "$src" "$staged$dest"
 done < "$manifest"
 
+# A new segment must start 4-byte aligned or the kernel's parser stops at a misaligned
+# magic; zero padding between archives is what the format skips.
+pre=$(stat -c%s "$artifact/initrd")
+pad=$(( (4 - pre % 4) % 4 ))
+if [ "$pad" != 0 ]; then
+  head -c "$pad" /dev/zero >> "$artifact/initrd"
+fi
 before=$(stat -c%s "$artifact/initrd")
 # The subshell restates the modes it needs: inherited options are one refactor away from
 # not being there, and a cpio that fails mid-pipeline must never leave a half-appended
@@ -39,7 +46,7 @@ sc=0
   find . -mindepth 1 | sort | cpio -o -H newc -R +0:+0 --reproducible --quiet
 ) >> "$artifact/initrd" || sc=$?
 if [ "$sc" != 0 ]; then
-  truncate -s "$before" "$artifact/initrd"
+  truncate -s "$pre" "$artifact/initrd"
   fatal "cpio append failed (exit $sc); the artifact was restored to its prior size"
 fi
 

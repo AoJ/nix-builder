@@ -34,7 +34,13 @@ in
 
     pool = mkOption {
       type = types.str;
-      description = "The pool the install action probes and cleanly exports.";
+      default = "";
+      description = "The zfs pool the action probes and exports; empty for a plain filesystem.";
+    };
+
+    storage = mkOption {
+      type = types.enum [ "zfs" "ext4" ];
+      description = "Shapes the action's probe and teardown — the one zfs-specific branch.";
     };
 
     keyDestination = mkOption {
@@ -89,9 +95,9 @@ in
         inherit (config) system;
         modules = [
           (import ./installer-profile.nix {
-            inherit (config) name prepare mount toplevel pool keyDestination rootMode isoLabel
-              slotFace;
-            inherit (tools) niximilateInstall netbootFace isoFace e2eRecord;
+            inherit (config) name prepare mount toplevel pool storage keyDestination rootMode
+              isoLabel slotFace;
+            inherit (tools) actionInstall netbootFace isoFace e2eRecord;
           })
         ];
       };

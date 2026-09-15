@@ -14,10 +14,16 @@ in
   fatImageApp = (import ./fat-image.nix { inherit pkgs bashTool; }).app;
   gptDisk = import ./gpt-disk.nix { inherit pkgs bashTool ids; };
   store = import ./store.nix { inherit pkgs bashTool; };
-  # The repo's ONE tested install action (disko-or-import -> place key -> nixos-install ->
-  # clean export), consumed from its single source — no copy. The install block's installer
-  # OS runs it; nothing reimplements the flow.
-  niximilateInstall = import ../../../../lib/50_install/niximilateInstallApp.nix pkgs;
+  # The install action, taken into blocks from lib/50_install (well-tested) and made
+  # shape-aware — zfs preserved, a generic filesystem path added. At integration the
+  # lib/50_install copy is deleted and this is the one source.
+  actionInstall = bashTool {
+    name = "action-install";
+    runtimeInputs = with pkgs; [
+      nix zfs util-linux e2fsprogs dosfstools nixos-install-tools coreutils
+    ];
+    text = builtins.readFile ./action-install.sh;
+  };
   # The read-only store mechanism (overlay + register-nix-paths) and the two runtime faces
   # built on it. A face is a nixos module, and the mechanism belongs to whoever declares the
   # read-only store — so it lives here once and every consumer imports it.

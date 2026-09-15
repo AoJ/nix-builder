@@ -114,6 +114,7 @@ let
       toplevel = host.variants.runtime.toplevel;
       closure = [ host.variants.runtime.toplevel ];
       inherit (host.install) prepare mount pool keyDestination;
+      storage = host.variants.runtime.storage;
       inherit rootMode isoLabel;
       slotFace = tools.slotFace { format = faceFormat; inherit (slot) name; };
     }).system;

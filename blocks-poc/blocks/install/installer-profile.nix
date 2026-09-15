@@ -3,14 +3,17 @@
 # then reboot into what it installed. The installer roots per wrapper: its own ext4
 # partition (raw/qcow2), the netboot face (kexec/ipxe), or the iso face keyed by the
 # medium's label (iso). Witnesses go to the result disk via e2e-record, not the console.
-{ name, prepare, mount, toplevel, pool, keyDestination, rootMode, isoLabel
-, slotFace, niximilateInstall, netbootFace, isoFace, e2eRecord }:
+{ name, prepare, mount, toplevel, pool, storage, keyDestination, rootMode, isoLabel
+, slotFace, actionInstall, netbootFace, isoFace, e2eRecord }:
 
 { pkgs, lib, modulesPath, ... }:
 {
   imports = [
     (modulesPath + "/profiles/minimal.nix")
     (modulesPath + "/profiles/qemu-guest.nix")
+    # The broad driver set, so a real installer boots real hardware and not only qemu
+    # (the mature installer's choice). Under qemu it still boots — virtio is included.
+    (modulesPath + "/profiles/all-hardware.nix")
   ] ++ lib.optional (rootMode == "memory")
     (if isoLabel != null then isoFace { label = isoLabel; } else netbootFace);
 
@@ -22,6 +25,11 @@
   networking.hostName = "${name}-installer";
   nix.enable = false;
   users.allowNoPasswordLogin = true;
+
+  # A safety net (the mature installer's watchdog): if the install wedges, the machine
+  # resets rather than hanging forever on a console-less box. Harmless under qemu without
+  # a watchdog device; real hardware arms the timer.
+  systemd.watchdog.runtimeTime = "90s";
 
   fileSystems."/" = lib.mkIf (rootMode == "disk") {
     device = "/dev/disk/by-partlabel/nixos";
@@ -39,7 +47,7 @@
   # This feeds the install action's delivered-key convention.
   systemd.services.slot-key = {
     wantedBy = [ "multi-user.target" ];
-    before = [ "niximilate-install.service" ];
+    before = [ "action-install.service" ];
     serviceConfig.Type = "oneshot";
     path = [ e2eRecord pkgs.util-linux pkgs.coreutils ];
     script = ''
@@ -75,7 +83,7 @@
     '';
   };
 
-  systemd.services.niximilate-install = {
+  systemd.services.action-install = {
     wantedBy = [ "multi-user.target" ];
     after = [ "slot-key.service" ];
     wants = [ "slot-key.service" ];
@@ -84,10 +92,10 @@
       StandardOutput = "journal+console";
       StandardError = "journal+console";
     };
-    path = [ niximilateInstall e2eRecord pkgs.systemd ];
+    path = [ actionInstall e2eRecord pkgs.systemd ];
     script = ''
       set -euo pipefail
-      niximilate-install ${lib.escapeShellArgs [ prepare mount toplevel pool keyDestination ]}
+      action-install ${lib.escapeShellArgs [ prepare mount toplevel keyDestination storage pool ]}
       e2e-record "NIXIMILATE-INSTALL-OK ${name}"
       systemctl reboot
     '';

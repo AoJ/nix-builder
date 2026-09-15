@@ -15,7 +15,9 @@ let
     prepare = pkgs.writeShellScript "prepare" "sgdisk --zap-all /dev/target";
     mount = pkgs.writeShellScript "mount" "zpool import rpool && mount -t zfs rpool/root /mnt";
     pool = "rpool";
+    storage = "zfs";
     keyDestination = "/var/lib/sops/age.key";
+    slotFace = tools.slotFace { format = "raw"; name = "secrets"; };
   };
 
   # The pipe: image(install(host)) — the format does not know it is packing an installer.
@@ -33,7 +35,8 @@ assert lib.assertMsg
   ((install {
     name = "fixture"; system = "x86_64-linux"; toplevel = target; closure = [ target ];
     prepare = pkgs.writeShellScript "p" ":"; mount = pkgs.writeShellScript "m" ":";
-    pool = "rpool"; keyDestination = "/k"; rootMode = "memory";
+    pool = "rpool"; storage = "zfs"; keyDestination = "/k"; rootMode = "memory";
+    slotFace = tools.slotFace { format = "kexec"; name = "secrets"; };
   }).system.rootMode == "memory")
   "the memory-rooted installer exists and declares itself";
 
@@ -42,11 +45,11 @@ pkgs.runCommand "test-install"
   ''
     set -euo pipefail
 
-    echo "== the installer is a real OS whose service runs the ONE tested install action =="
-    unit=${handed.system.toplevel}/etc/systemd/system/niximilate-install.service
+    echo "== the installer is a real OS whose service runs the ONE install action =="
+    unit=${handed.system.toplevel}/etc/systemd/system/action-install.service
     [ -e "$unit" ]
     starter="$(grep -oP 'ExecStart=\K\S+' "$unit")"
-    grep -q 'niximilate-install' "$starter"
+    grep -q 'action-install' "$starter"
     grep -q 'prepare' "$starter"
     grep -q 'rpool' "$starter"
     grep -q '/var/lib/sops/age.key' "$starter"

@@ -19,7 +19,17 @@ let
         rootMode = "disk";
         storage = "ext4";
       };
-      live = {
+      # The memory-rooted variants, hand-built (no nixosSystem). liveIso is keyed by label,
+      # liveNetboot is plain — the two the composer asks for per live format.
+      liveNetboot = {
+        toplevel = pkgs.writeText "demo-live-toplevel" "the memory-rooted variant";
+        kernel = pkgs.writeText "demo-kernel" "kernel";
+        initrd = pkgs.writeText "demo-live-initrd" "live initrd";
+        espBinary = pkgs.writeText "systemd-boot.efi" "not a bootloader";
+        kernelParams = [ "boot.live" ];
+        rootMode = "memory";
+      };
+      liveIso = _label: {
         toplevel = pkgs.writeText "demo-live-toplevel" "the memory-rooted variant";
         kernel = pkgs.writeText "demo-kernel" "kernel";
         initrd = pkgs.writeText "demo-live-initrd" "live initrd";

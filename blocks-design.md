@@ -319,21 +319,27 @@ installer's OWN slot — where the install-time key is read from, `image`'s inpu
 installer is packed — and the place the installed host's key lands on the target it just created,
 which is this block's `keyDestination` input. The contract keeps them apart.
 
-**The install ACT is `niximilate-install`, reached as a tool** — the repo's one tested action
-(import-or-create, never-reformat, key placement, nixos-install, clean pool export), consumed
-from its single source in `lib/50_install/` through the privileged tools assembly. Nothing is
-copied and nothing reimplements the flow; the block's installer OS is a minimal system of the
-block's own whose one service runs that action against the six inputs (`prepare` doubles as the
-diskoScript role — it creates AND mounts; `mount` is the never-reformat path). The installer
-ROOTS per wrapper: its own disk partition for raw/qcow2, the netboot face for kexec/ipxe, and
-the iso face keyed by the medium's label for iso — the same faces the live variants wear, taken
-from tools. The installer's slot feeds the action's
-delivered-key convention (`/run/niximilate-sops.age`, and `/tmp/zfs_root_key` for a pool
-passphrase riding the same slot), whichever face delivered it — so phase 2 on an `-install`
-artifact is the same personalize as everywhere else.
+**The install ACT is `action-install`, reached as a tool** — the repo's tested install flow
+(probe-or-create, never-reformat, key placement, nixos-install, clean teardown), taken into
+blocks from `lib/50_install` and made SHAPE-AWARE. The zfs path is preserved as it was (the
+`zpool import` probe, and the clean `zpool export` a still-imported pool would otherwise turn
+into an emergency boot); the generic path for a plain filesystem uses the mount script itself
+as the probe and a plain unmount as the teardown. The block's installer OS is a minimal system
+of the block's own whose one service runs the action against its inputs — `prepare` creates AND
+mounts (disko's create), `mount` is the never-reformat path (disko's mount), and `storage`
+selects the one zfs-specific branch. The installer ROOTS per wrapper: its own disk partition
+for raw/qcow2, the netboot face for kexec/ipxe, the iso face keyed by the medium's label for
+iso — the same faces the live variants wear, taken from tools — and it carries the mature
+installer's shape: the all-hardware profile so it boots real machines, and a systemd watchdog
+as the safety net for a console-less box. The installer's slot feeds the delivered-key
+convention (`/run/niximilate-sops.age`, and `/tmp/zfs_root_key` for a pool passphrase riding the
+same slot), whichever face delivered it — so phase 2 on an `-install` artifact is the same
+personalize as everywhere else.
 
-The action is pool-centric — that is its home turf and exactly the L2 case. A non-zfs install
-target is not covered by it today; the hole is named in Open, not papered over.
+Both storage shapes go through disko's own create/mount scripts, so the action reformats
+nothing it did not have to: a zfs pool is created by the install (L2), and an ext4 target is
+formatted the same way through the layout that also boots it. At integration `lib/50_install`
+is deleted and this is the one source.
 
 ## store — a tool, inside image
 
@@ -482,15 +488,13 @@ transformation — it adds a mount to the system, so it happens before `image`, 
 load-bearing, not an optimisation: `sops.useSystemdActivation` is false on c, ax and iris, so
 sops-nix decrypts during activation, when the only filesystems are the ones stage 1 mounted.
 
-**The rule: whoever owns the shape of the storage provides the slot.** Where
-there is an fs layout, the layout provides it. Where there is none — `iso` has no layout,
-`kexec` / `ipxe` have no filesystem at all — `image` provides it, because it is already making
-that shape.
-
-Today that first half has no executor: the only layout is zfs, and a zfs host has no
-`#image-raw` to put a slot in — the pool comes from the install, so the combination is a hole the
-matrix names. An ext4 layout does not exist yet. So **in practice `image` provides every slot**,
-and the rule's other half is written down for the layout that will want it, not for one that does.
+**The rule: whoever owns the shape of the storage provides the slot, and the composer reads it
+from there.** Where there is an fs layout, the layout names its slot partition and the composer
+extracts that name (`host.slotFromLayout`) rather than inventing one — the ext4 layout does
+exactly this, a vfat slot partition disko formats beside the root. Where there is no layout —
+`iso` has no layout, `kexec` / `ipxe` have no filesystem at all — `image` provides the slot,
+because it is already making that shape. A zfs host still has no `#image-raw` to put a slot in
+(the pool comes from the install), so that combination stays the hole the matrix names.
 
 The rule is not enforced in general, and it does not need to be: **it is conditional on the host
 asking for it.** A host that declares no embedded delivery owes nothing. A host that declares one
@@ -588,32 +592,27 @@ the design, not the test author's taste.
 
 ## Open
 
-1. The slot's mechanism for a layout (DECIDED in direction, aoj 2026-09-15: the COMPOSER is
-   responsible for the slot descriptor — it knows it, or extracts it from the host/layout, and
-   a layout that will not cooperate is an eval error, because the downstream blocks cannot run).
-   What is open is the extraction mechanism for the coming ext4 layout — perhaps the layout
-   exposes an attribute naming which partition is the slot; nothing better is on the table yet.
-   An ext4 test host is the vehicle to settle it.
-2. A third validation gate, `#verify`-shaped: take a FINISHED artifact plus the host's
+1. A third validation gate, `#verify`-shaped: take a FINISHED artifact plus the host's
    declaration and check they correspond — format, slot present and formatted, closure carried —
    independently of the build path that produced it. The two existing checks each catch one
    failure (eval: nothing composed a slot; personalize: the artifact drifted from its
    declaration), but neither validates an artifact someone hands you. Whether this gate is
    wanted at all, and whether it sits in deploy or as its own app, is aoj's call.
-3. What belongs in `tools` besides the current set — a placeholder so additions stay conscious.
-4. The self-install closure bound is the INSTALL SCRIPT's safe gate, not an eval assertion
+2. What belongs in `tools` besides the current set — a placeholder so additions stay conscious.
+3. The self-install closure bound is the INSTALL SCRIPT's safe gate, not an eval assertion
    (aoj): before any mutable operation it compares the carried closure against the actual tmpfs
    capacity it would unpack into — and a squashfs-carried closure is not unpacked at all, so
    the bound only bites where a copy really lands in tmpfs. The kernel is ours: the tmpfs size
    is tunable (e.g. 70%), which moves the boundary; the gate reads the real capacity either way.
-5. The install action's takeover (aoj): blocks adopt `niximilate-install` as **action-install**
-   (nothing outside the repository's own name says niximilate), it grows an EARLY capability
-   gate — refuse up front what the target layout/host cannot do — and an ext4 target. The
-   probable mechanism for both storage shapes is disko's own exposed format/mount scripts,
-   which the original implementation predates. Ties to 1: the ext4 test host carries most of
-   this.
-6. The schema seam is data-only so far: `requires.secrets` → the files/keyTarget record, and
+4. `action-install`'s EARLY capability gate: refuse up front what the target layout/host cannot
+   do, rather than failing mid-format. The action is shape-aware (zfs / plain fs via disko) and
+   ext4 installs end to end; the pre-flight refusal is the piece still to add.
+5. The schema seam is data-only so far: `requires.secrets` → the files/keyTarget record, and
    driving the composer's host records through the seam, remain for integration. Further
    changes are expected here (aoj), too early to describe.
-7. Building (not just evaluating) arm artifacts on an x86 box via binfmt — parked; measured
+6. Building (not just evaluating) arm artifacts on an x86 box via binfmt — parked; measured
    elsewhere to boot in tens of seconds, so it is a capacity question, not a feasibility one.
+7. Integration into the repo: delete lib/50_install (now `action-install` in blocks), retire
+   nixos-generators and the old image paths, and drive real host records through the schema
+   seam. This is the last track and the one the withdrawn branch got wrong by leaving deletions
+   for last — each move pairs with its deletion.

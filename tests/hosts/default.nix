@@ -2,7 +2,7 @@
 # record is produced by the one explicit extraction. The set spans the dimensions — disk vs
 # memory, ext4 vs squashfs vs zfs, secrets delivered vs none — because that is what a
 # hand-assembled record cannot prove.
-{ pkgs, tools }:
+{ pkgs, tools, record }:
 
 let
   fixture = import ../../blocks-poc/blocks/personalize/fixture.nix { inherit pkgs; };
@@ -10,6 +10,7 @@ let
   inherit (pkgs) lib;
   diskoModule = (import ../../disko-pin.nix) + "/module.nix";
   targetDevice = "/dev/disk/by-id/virtio-target";
+  reportBin = "${record}/bin/e2e-record";
 
   evalHost = system: modules:
     import (pkgs.path + "/nixos/lib/eval-config.nix") {
@@ -21,6 +22,8 @@ let
     mount = pkgs.writeShellScript "mount" "mount /dev/target-root \"$1\"";
     pool = "rpool";
     keyDestination = "/var/lib/sops/age.key";
+    disks = [ "/dev/target" ];
+    report = null;
   };
 
   # The zfs host's REAL extracted install values: its disk-preparation creates the pool
@@ -30,6 +33,8 @@ let
   zfsInstall = {
     pool = "rpool";
     keyDestination = "/var/lib/sops/age.key";
+    disks = [ targetDevice ];
+    report = reportBin;
     # Runs under the install action's PATH (nix, zfs, util-linux, coreutils); anything
     # outside that set is spelled absolutely. The target is named by the STABLE identity
     # the e2e attaches it with (a virtio serial), so the same extracted values work under
@@ -74,7 +79,7 @@ let
       zpool create -f -o ashift=12 -O mountpoint=none -O compression=on \
         -O encryption=on -O keyformat=passphrase \
         -O keylocation=file:///tmp/zfs_root_key rpool "''${disk}-part2"
-      ${tools.e2eRecord}/bin/e2e-record "E2E-POOL-ENCRYPTION $(zfs get -H -o value encryption rpool)"
+      ${reportBin} "E2E-POOL-ENCRYPTION $(zfs get -H -o value encryption rpool)"
       zfs create -o mountpoint=legacy rpool/root
       mkdir -p /mnt
       mount -t zfs rpool/root /mnt
@@ -99,24 +104,26 @@ let
     }];
   };
 
-  mk = { name, modules, storage, secrets, install ? syntheticInstall,
-         system ? "x86_64-linux", slotFromLayout ? null, diskoInstall ? false }:
+  mk = { name, modules, storage, secrets, slotName, install ? syntheticInstall,
+         system ? "x86_64-linux", diskoInstall ? false }:
     let
       runtime = evalHost system ([
         ./modules/base.nix
-        (import ./modules/e2e-result.nix { record = tools.e2eRecord; })
-        (import ./modules/marker.nix { record = tools.e2eRecord; })
+        (import ./modules/e2e-result.nix { inherit record; })
+        (import ./modules/marker.nix { inherit record; })
         { networking.hostName = name; }
       ] ++ modules);
       # A disko host's install prepare/mount ARE disko's own scripts — create+mount and
-      # mount-existing — so the same layout that boots the host also formats it. No
-      # hand-rolled partitioning.
+      # mount-existing — so the same layout that boots the host also formats it, and the
+      # layout's own device list is what a create wipes. No hand-rolled partitioning.
       installFinal =
         if diskoInstall then {
           prepare = runtime.config.system.build.diskoScript;
           mount = runtime.config.system.build.mountScript;
           pool = "";
           keyDestination = "/var/lib/sops/age.key";
+          disks = map (d: d.device) (lib.attrValues runtime.config.disko.devices.disk);
+          report = reportBin;
         } else install;
       # The real extendModules step: each live variant is the host plus a face module,
       # evaluated by the composer's side of the world — never inside a block. There is one
@@ -127,7 +134,7 @@ let
       };
     in
     {
-      inherit name secrets system;
+      inherit name secrets system slotName;
       variants = {
         runtime = extract runtime // { inherit storage; };
         liveNetboot = extract liveNetboot;
@@ -138,7 +145,7 @@ let
         });
       };
       install = installFinal;
-    } // lib.optionalAttrs (slotFromLayout != null) { inherit slotFromLayout; };
+    };
 in
 {
   ext4 = mk {
@@ -146,6 +153,7 @@ in
     modules = [ ./modules/disk-ext4.nix ];
     storage = "ext4";
     secrets = withSecrets;
+    slotName = "secrets";
   };
 
   memory = mk {
@@ -156,6 +164,7 @@ in
     }) ];
     storage = "squashfs";
     secrets = noSecrets;
+    slotName = "secrets";
   };
 
   zfs = mk {
@@ -163,6 +172,7 @@ in
     modules = [ ./modules/disk-zfs.nix ];
     storage = "zfs";
     secrets = withSecrets;
+    slotName = "secrets";
     install = zfsInstall;
   };
 
@@ -177,6 +187,7 @@ in
         runtimeSource = "${fixture}/pool.pass";
       }];
     };
+    slotName = "secrets";
     install = zfsEncInstall;
   };
 
@@ -185,6 +196,7 @@ in
     modules = [ ./modules/disk-ext4.nix ];
     storage = "ext4";
     secrets = noSecrets;
+    slotName = "secrets";
   };
 
   # The arch-split tripwire: a REAL aarch64 configuration, evaluated on this x86 box (pure
@@ -197,21 +209,24 @@ in
     modules = [ ./modules/disk-ext4.nix ];
     storage = "ext4";
     secrets = withSecrets;
+    slotName = "secrets";
   };
 
   # The ext4 INSTALL host: a real disko layout owns the disk AND the slot partition, so the
-  # install action formats ext4 through disko's own scripts (no zpool anywhere) and the
-  # composer reads the slot name from the layout (Open 1). The install cycle proves the
-  # non-zfs target path (Open 6).
-  ext4-install = mk {
-    name = "e2e-ext4-install";
-    modules = [
-      diskoModule
-      (import ./modules/disk-ext4-layout.nix { device = targetDevice; slotName = "secrets"; })
-    ];
-    storage = "ext4";
-    secrets = withSecrets;
-    diskoInstall = true;
-    slotFromLayout = "secrets";
-  };
+  # install action formats ext4 through disko's own scripts (no zpool anywhere). ONE
+  # declaration names the slot: the layout's partition and the host record read the same
+  # binding.
+  ext4-install =
+    let slotName = "secrets";
+    in mk {
+      name = "e2e-ext4-install";
+      modules = [
+        diskoModule
+        (import ./modules/disk-ext4-layout.nix { device = targetDevice; inherit slotName; })
+      ];
+      storage = "ext4";
+      secrets = withSecrets;
+      diskoInstall = true;
+      inherit slotName;
+    };
 }

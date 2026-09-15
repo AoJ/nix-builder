@@ -5,23 +5,30 @@
 # helper lib it prepends). Only tools go in here. A block placed here would let a block
 # reach a block, and the rule that keeps the dependency graph acyclic falls.
 let
+  inherit (pkgs) lib;
   bashTool = args: (import ../../../../lib/core/bashTool.nix) ({ inherit pkgs; } // args);
   ids = import ./ids.nix;
+  # zfs (userland here, the kernel module in the installer profile) rides only where the
+  # target storage is zfs — an ext4 installer carries neither.
+  actionWipe = { storage }: bashTool {
+    name = "action-wipe";
+    runtimeInputs = (with pkgs; [ util-linux gptfdisk parted mdadm coreutils systemd ])
+      ++ lib.optional (storage == "zfs") pkgs.zfs;
+    text = builtins.readFile ./action-wipe.sh;
+  };
 in
 {
-  inherit bashTool ids;
+  inherit bashTool ids actionWipe;
   fatImage = (import ./fat-image.nix { inherit pkgs bashTool; }).build;
   fatImageApp = (import ./fat-image.nix { inherit pkgs bashTool; }).app;
   gptDisk = import ./gpt-disk.nix { inherit pkgs bashTool ids; };
   store = import ./store.nix { inherit pkgs bashTool; };
-  # The install action, taken into blocks from lib/50_install (well-tested) and made
-  # shape-aware — zfs preserved, a generic filesystem path added. At integration the
-  # lib/50_install copy is deleted and this is the one source.
-  actionInstall = bashTool {
+  actionInstall = { storage }: bashTool {
     name = "action-install";
-    runtimeInputs = with pkgs; [
-      nix zfs util-linux e2fsprogs dosfstools nixos-install-tools coreutils
-    ];
+    runtimeInputs = (with pkgs; [
+      nix util-linux e2fsprogs dosfstools nixos-install-tools coreutils
+    ]) ++ [ (actionWipe { inherit storage; }) ]
+      ++ lib.optional (storage == "zfs") pkgs.zfs;
     text = builtins.readFile ./action-install.sh;
   };
   # The read-only store mechanism (overlay + register-nix-paths) and the two runtime faces
@@ -33,23 +40,4 @@ in
   # Where a slot lives per format — the ONE source the image builds from and the installer
   # reads from. (The marker restates it on purpose, to gate drift; see marker.nix.)
   slotFace = import ./slot-face.nix;
-
-  # Deterministic e2e capture: append a witness line to the vfat "result" disk the harness
-  # attaches (stable virtio serial e2eout), instead of racing serial output that a fast
-  # guest can lose before qemu drains it. Mounts per call, so sequential writers from
-  # different services are safe. The harness reads the disk with mtools after qemu exits.
-  e2eRecord = pkgs.writeShellScriptBin "e2e-record" ''
-    set -eu
-    dev=/dev/disk/by-id/virtio-e2eout
-    [ -e "$dev" ] || { echo "e2e-record: no result disk" >&2; exit 0; }
-    mnt=/run/e2e-out
-    # Mount ONCE and leave it: a mount/umount per call races the vfat ("device busy" on the
-    # next mount before writeback settles) and silently drops lines. Shutdown unmounts and
-    # flushes; the per-write sync is belt-and-braces.
-    ${pkgs.coreutils}/bin/mkdir -p "$mnt"
-    ${pkgs.util-linux}/bin/mountpoint -q "$mnt" \
-      || ${pkgs.util-linux}/bin/mount -t vfat -o rw "$dev" "$mnt"
-    ${pkgs.coreutils}/bin/printf '%s\n' "$*" >> "$mnt/log"
-    ${pkgs.coreutils}/bin/sync
-  '';
 }

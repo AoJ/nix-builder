@@ -1,10 +1,10 @@
 # A REAL disko ext4 layout: GPT on one disk with an ESP (/boot), an ext4 root (/), and a
 # vfat SLOT partition. disko generates diskoScript (create+mount) and mountScript from this,
 # and sets fileSystems — so the same layout formats the target at install and mounts it at
-# runtime. The layout OWNS the slot (Open 1): it names the partition, and the composer reads
-# that name (host.slotFromLayout) rather than inventing one.
+# runtime.
 #
-# `device` is the target's stable identity; `slotName` is the slot partition's partlabel.
+# `device` is the target's stable identity; `slotName` is the slot partition's partlabel —
+# the host's one slot declaration, bound here and in the host record from the same value.
 { device, slotName }:
 {
   disko.devices.disk.main = {

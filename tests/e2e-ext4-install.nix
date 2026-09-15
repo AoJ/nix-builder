@@ -1,4 +1,4 @@
-# The ext4 install cycle (Open 6): the ext4-install host's #image-kexec-install — a netboot
+# The ext4 install cycle: the ext4-install host's #image-kexec-install — a netboot
 # installer carrying the host's closure — is personalized through its initrd slot, boots
 # with no firmware and no disk of its own, and runs action-install's GENERIC path: disko's
 # own scripts format an ext4 root + ESP + slot on the target (no zpool anywhere), the key
@@ -44,7 +44,7 @@ in
     mcopy -i result-a.img ::/log result-a 2>/dev/null || touch result-a
     echo "=== install result:" >&2; cat result-a >&2
     grep -q "installer: install-time key taken from the slot" result-a
-    grep -q "NIXIMILATE-INSTALL-OK e2e-ext4-install" result-a
+    grep -q "INSTALL-OK e2e-ext4-install" result-a
 
     echo "== phase B: the installed ext4 disk boots ALONE =="
     install -m 0644 ${pkgs.OVMF.fd}/FV/OVMF_VARS.fd vars.fd

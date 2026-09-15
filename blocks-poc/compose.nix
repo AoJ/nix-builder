@@ -17,10 +17,9 @@ in
 host:
 
 let
-  # The embedded slot: the composer picks its size and NAMES it — inventing the name where
-  # nothing else owns it, or READING it from a storage layout that does (Open 1). A host
-  # whose ext4 layout declares the slot partition surfaces it as slotFromLayout.
-  slot = { name = host.slotFromLayout or "secrets"; sizeMiB = 4; };
+  # The slot name is the HOST's declaration, never a default here: a typo'd host attribute
+  # must fail eval, not silently land on a fallback.
+  slot = { name = host.slotName; sizeMiB = 4; };
 
   # The label is the one constant spanning eval and artifact: both sides derive it from
   # the same name through the same ids tool, and the e2e boot tests the agreement.
@@ -52,7 +51,6 @@ let
 
   # The installer is an OS of its own; its store and root mode are the WRAPPER's, so the
   # target's storage never shapes them and the L2 hole does not exist on the -install half.
-  # The memory-rooted installer does not exist yet: install refuses it by name.
   installerShapeFor = format: {
     iso = "squashfs";
     kexec = "squashfs";
@@ -114,7 +112,7 @@ let
       inherit (host) name system;
       toplevel = host.variants.runtime.toplevel;
       closure = [ host.variants.runtime.toplevel ];
-      inherit (host.install) prepare mount pool keyDestination;
+      inherit (host.install) prepare mount pool keyDestination disks report;
       storage = host.variants.runtime.storage;
       inherit rootMode isoLabel;
       slotFace = tools.slotFace { format = faceFormat; inherit (slot) name; };
@@ -128,15 +126,21 @@ let
     iso = installerFor { rootMode = "memory"; isoLabel = isoInstallLabel; };
   };
 
+  # L6 mirrors L2: a squashfs store is written by the image, never by an install —
+  # nixos-install populates a filesystem, and a squashfs is generated from one.
   installEndpoints = lib.listToAttrs (map (f: {
     name = "image-${f}-install";
     value =
-      let
-        installer =
-          if f == "iso" then installers.iso
-          else installers.${installerRootModeFor f};
-      in
-      imageFor f (installerShapeFor f) installer.rootMode installer "-install";
+      if host.variants.runtime.storage == "squashfs"
+      then throw ("unsupported (L6): a squashfs store is written by the image, never by an"
+        + " install — deploy #image-${f} itself")
+      else
+        let
+          installer =
+            if f == "iso" then installers.iso
+            else installers.${installerRootModeFor f};
+        in
+        imageFor f (installerShapeFor f) installer.rootMode installer "-install";
   }) formats);
 
   sidecarFiles = map (f: { inherit (f) target; source = f.runtimeSource; }) host.secrets.files;

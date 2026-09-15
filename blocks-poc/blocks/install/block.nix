@@ -38,6 +38,16 @@ in
       description = "The zfs pool the action probes and exports; empty for a plain filesystem.";
     };
 
+    disks = mkOption {
+      type = types.nonEmptyListOf types.str;
+      description = "Block devices the target lives on — what a create wipes first, and only a create.";
+    };
+
+    report = mkOption {
+      type = types.nullOr types.str;
+      description = "Executable the installer calls with one line per milestone; null reports nothing.";
+    };
+
     storage = mkOption {
       type = types.enum [ "zfs" "ext4" ];
       description = "Shapes the action's probe and teardown — the one zfs-specific branch.";
@@ -96,8 +106,9 @@ in
         modules = [
           (import ./installer-profile.nix {
             inherit (config) name prepare mount toplevel pool storage keyDestination rootMode
-              isoLabel slotFace;
-            inherit (tools) actionInstall netbootFace isoFace e2eRecord;
+              isoLabel slotFace disks report;
+            actionInstall = tools.actionInstall { inherit (config) storage; };
+            inherit (tools) netbootFace isoFace;
           })
         ];
       };

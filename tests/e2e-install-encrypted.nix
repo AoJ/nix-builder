@@ -43,7 +43,7 @@ in
     grep -q "installer: install-time key taken from the slot" result
     grep -q "installer: pool passphrase taken from the slot" result
     grep -q "E2E-POOL-ENCRYPTION aes-256-gcm" result
-    grep -q "NIXIMILATE-INSTALL-OK e2e-zfs-enc" result
+    grep -q "INSTALL-OK e2e-zfs-enc" result
 
     touch "$out"
   ''

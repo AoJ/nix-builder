@@ -83,6 +83,10 @@ Derived:
 - **L4 — `format = kexec | ipxe` ⇒ `runtime.mode = memory`.** Same reason as L1: no disk.
 - **L5 — `personalize` requires a writable slot in the finished artifact.** Which formats have
   one is measured, not assumed — see the slot's table.
+- **L6 — a squashfs store is written by the image, never by an install.** The mirror of L2:
+  `nixos-install` populates a filesystem, and a squashfs is generated from one. The deliverable
+  for a `runtime.storage = squashfs` host is the runtime image itself, and its `-install`
+  endpoints are holes the matrix names.
 
 ## The endpoint set — DECIDED
 
@@ -133,11 +137,11 @@ Backend is assembly everywhere — no VM emulation in the image path.
 
 | host runtime | `#image-iso` | `#image-raw` / `-qcow2` | `#image-kexec` / `-ipxe` | `#image-*-install` |
 |---|---|---|---|---|
-| memory / squashfs | yes | yes | yes | yes |
+| memory / squashfs | yes | yes | yes | **unsupported (L6)** — deploy `#image-*` itself |
 | disk / ext4 | yes (L1) | yes | yes (L4) | yes |
 | disk / zfs | yes (L1) | **unsupported (L2)** — use `#image-raw-install` | yes (L4) | yes |
 
-The one hole is a law, not a per-host switch: it is a property of `runtime.storage`, reads the
+Every hole is a law, not a per-host switch: it is a property of `runtime.storage`, reads the
 same for every host that has one, and names its own replacement.
 
 ## The blocks
@@ -172,7 +176,7 @@ not know about each other, do not call each other, and never see a host.
 **A block's input is derivations and strings, never a configuration.** The boundary is not
 policed but made unrepresentable: the composer extracts what a block needs — toplevel, kernel,
 initrd, kernelParams, espBinary, rootMode, closure, names — and the block is handed nothing a
-`niximilate.*` could be read from. The positive proof is the block's own tests, driven from a
+host option could be read from. The positive proof is the block's own tests, driven from a
 record assembled by hand with no `nixosSystem` in it. Two of those values deserve their own
 sentence: **espBinary comes from the TARGET's systemd**, because the blocks' tools are the
 runner's and a runner-arch `pkgs.systemd` carries no aa64 binary at all — this is what keeps the
@@ -238,7 +242,13 @@ lib it prepends) enters here, so every tool script is shellcheck-gated at build.
 
 The set as the PoC stands: `bashTool` (mkBashTool bound to `pkgs`), `ids` (identity from a name),
 `fatImage` (manifest → FAT filesystem — the ESP, the slot, and the vfat sidecar are one
-mechanism), `gptDisk` (partition images → GPT disk, layout emitted as JSON), `store` (below).
+mechanism), `gptDisk` (partition images → GPT disk, layout emitted as JSON), `store` (below),
+the read-only-store mechanism and the two runtime faces built on it (`roStore`, `netbootFace`,
+`isoFace`), `slotFace` (where a slot lives per format), and the install actions
+(`actionInstall`, `actionWipe`), both keyed by the target storage so zfs rides only where the
+target is zfs. The e2e recorder is deliberately NOT here: it is a harness helper no block
+receives, and it lives with the tests — the install block's `report` input is the seam it
+plugs into.
 
 ## Reproducibility and identity
 
@@ -319,27 +329,49 @@ installer's OWN slot — where the install-time key is read from, `image`'s inpu
 installer is packed — and the place the installed host's key lands on the target it just created,
 which is this block's `keyDestination` input. The contract keeps them apart.
 
-**The install ACT is `action-install`, reached as a tool** — the repo's tested install flow
-(probe-or-create, never-reformat, key placement, nixos-install, clean teardown), taken into
-blocks from `lib/50_install` and made SHAPE-AWARE. The zfs path is preserved as it was (the
-`zpool import` probe, and the clean `zpool export` a still-imported pool would otherwise turn
-into an emergency boot); the generic path for a plain filesystem uses the mount script itself
-as the probe and a plain unmount as the teardown. The block's installer OS is a minimal system
-of the block's own whose one service runs the action against its inputs — `prepare` creates AND
-mounts (disko's create), `mount` is the never-reformat path (disko's mount), and `storage`
-selects the one zfs-specific branch. The installer ROOTS per wrapper: its own disk partition
-for raw/qcow2, the netboot face for kexec/ipxe, the iso face keyed by the medium's label for
-iso — the same faces the live variants wear, taken from tools — and it carries the mature
-installer's shape: the all-hardware profile so it boots real machines, and a systemd watchdog
-as the safety net for a console-less box. The installer's slot feeds the delivered-key
-convention (`/run/niximilate-sops.age`, and `/tmp/zfs_root_key` for a pool passphrase riding the
-same slot), whichever face delivered it — so phase 2 on an `-install` artifact is the same
-personalize as everywhere else.
+**The install ACT is `action-install`, reached as a tool.** Its contract, in order:
+
+- **Probe first, and never reformat an installed target.** For zfs the probe is `zpool import`
+  — the pool is the thing that persists; for a plain filesystem the probe is the mount script
+  itself, which succeeds on an installed target and fails on a fresh disk. A present target is
+  mounted at `/mnt` and nothing destructive ever runs. `storage = zfs` requires a non-empty
+  pool name up front — an empty name must fail the argument check, never reach the probe and
+  decide between mount and format by accident.
+- **A create begins with `action-wipe` over the target's declared `disks`.** The wipe releases
+  every holder in dependency order — swap, a stale `/mnt` (a failed mount probe is not
+  all-or-nothing and may leave a partial tree mounted), imported pools, md arrays — then
+  deep-clears each device: partition signatures, all blocks (discard, or zeroing the head
+  where discard is unsupported), and the partition table. Deep, because a signature inside an
+  old partition survives a plain signature wipe and makes the following create see a disk in
+  use. Only then does the create script — disko's create, or an equivalent — format and mount
+  the target at `/mnt`.
+- **The create runs under no timeout.** Killing a destructive, non-rerunnable write mid-flight
+  manufactures exactly the half-written state the probe exists to prevent. `nixos-install`
+  keeps its budget, being re-runnable.
+- **Key, system, teardown.** The installed system's age key (when delivered) is placed at its
+  declared destination on the mounted target, `nixos-install` unpacks the carried closure
+  offline, and the teardown unmounts the whole `/mnt` tree — `nixos-install` leaves chroot
+  binds that keep the storage busy. A zfs pool is additionally EXPORTED and the export
+  verified, because a still-imported pool boots the installed system to emergency; a plain
+  filesystem has no equivalent.
+
+The block's installer OS is a minimal system of the block's own whose one service runs the
+action against the block's inputs: `prepare` creates AND mounts, `mount` is the never-reformat
+probe, `disks` names what a create wipes, `storage` selects the zfs-specific probe and
+teardown — and is the only thing that puts zfs into the installer, kernel module and userland
+both; an ext4 installer carries neither. `report`, when set, is an executable the installer
+calls with one line per milestone; unset, the installer reports nothing. The installer ROOTS
+per wrapper: its own disk partition for raw/qcow2, the netboot face for kexec/ipxe, the iso
+face keyed by the medium's label for iso — the same faces the live variants wear — with the
+all-hardware driver set so it boots real machines, and a systemd watchdog so a wedged install
+resets a console-less box instead of hanging forever. The installer's slot feeds the
+delivered-key convention (`/run/sops.age`, and `/tmp/zfs_root_key` for a pool passphrase
+riding the same slot), whichever face delivered it — so phase 2 on an `-install` artifact is
+the same personalize as everywhere else.
 
 Both storage shapes go through disko's own create/mount scripts, so the action reformats
 nothing it did not have to: a zfs pool is created by the install (L2), and an ext4 target is
-formatted the same way through the layout that also boots it. At integration `lib/50_install`
-is deleted and this is the one source.
+formatted the same way through the layout that also boots it.
 
 ## store — a tool, inside image
 
@@ -488,13 +520,14 @@ transformation — it adds a mount to the system, so it happens before `image`, 
 load-bearing, not an optimisation: `sops.useSystemdActivation` is false on c, ax and iris, so
 sops-nix decrypts during activation, when the only filesystems are the ones stage 1 mounted.
 
-**The rule: whoever owns the shape of the storage provides the slot, and the composer reads it
-from there.** Where there is an fs layout, the layout names its slot partition and the composer
-extracts that name (`host.slotFromLayout`) rather than inventing one — the ext4 layout does
-exactly this, a vfat slot partition disko formats beside the root. Where there is no layout —
-`iso` has no layout, `kexec` / `ipxe` have no filesystem at all — `image` provides the slot,
-because it is already making that shape. A zfs host still has no `#image-raw` to put a slot in
-(the pool comes from the install), so that combination stays the hole the matrix names.
+**The rule: the slot's name is the host's declaration (`slotName`), and there is no default** —
+a mistyped declaration must fail eval, never silently land on a fallback. Where an fs layout
+owns the disk, the same declaration names the layout's slot partition — one binding, read by
+both the layout and the composer; the ext4 layout does exactly this, a vfat slot partition
+disko formats beside the root. Where there is no layout — `iso` has no layout, `kexec` /
+`ipxe` have no filesystem at all — `image` makes the slot in the shape it is already making. A
+zfs host still has no `#image-raw` to put a slot in (the pool comes from the install), so that
+combination stays the hole the matrix names.
 
 The rule is not enforced in general, and it does not need to be: **it is conditional on the host
 asking for it.** A host that declares no embedded delivery owes nothing. A host that declares one
@@ -571,7 +604,8 @@ the design, not the test author's taste.
   spending ten VM-minutes to prove one mechanism, and zero coverage of the mechanism's own switch
   combinations. The whole cycle is covered by an e2e attached to no single host.
 - **The e2e's witness is the booted system itself**: an assembled artifact boots under OVMF/KVM
-  and a marker unit prints what only a running system can prove onto the serial console — that
+  and a marker unit records what only a running system can prove onto the result disk the
+  harness attaches — that
   userspace came up, and what the slot really holds (empty on a pristine image, the planted
   key's own public half after personalize). The test hosts are throwaway configurations that
   exist for the matrix, not production hosts wearing a second hat.
@@ -580,8 +614,8 @@ the design, not the test author's taste.
   check is eval-only — it discards the string context, asking what the names are without asking
   for the things to be made.
 - **Forcing a name is never read as "works": the coverage TABLE says which is which.** Every
-  (host, endpoint) pair carries exactly one declared status — `booted`, `built`, `hole`,
-  `eval-only` — and the suite fails when the table is incomplete against the endpoint set, when
+  (host, endpoint) pair carries exactly one declared status — `booted`, `hole`, `eval-only` —
+  and the suite fails when the table is incomplete against the endpoint set, when
   a declared hole does not refuse, or when the holes drift from the laws. "It only evaluates" is
   a visible name someone wrote down, never a default the suite hands out. Every `booted` must be
   claimed by an e2e's own witness declaration, asserted as set equality — the table cannot drift

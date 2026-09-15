@@ -5,12 +5,13 @@
 #   test-hosts-compose-<h>  eval-only, ONE host per attribute — run them as separate nix
 #                           processes; one eval of all hosts peaks past this box's RAM
 #   e2e-*                   built artifacts booted under OVMF/KVM or -kernel/-initrd,
-#                           witnessed on the serial console
+#                           witnessed on the result disk the harness attaches
 let
   pkgs = import (import ../nixpkgs-pin.nix) { };
   tools = import ../blocks-poc/tools { inherit pkgs; };
   compose = import ../blocks-poc/compose.nix { inherit pkgs tools; };
-  hosts = import ./hosts { inherit pkgs tools; };
+  record = import ./e2e-record.nix { inherit pkgs; };
+  hosts = import ./hosts { inherit pkgs tools record; };
 
   e2e = {
     raw-boot = import ./e2e-raw-boot.nix { inherit pkgs compose hosts; };

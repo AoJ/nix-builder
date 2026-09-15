@@ -25,17 +25,20 @@ let
 
   statuses = [ "booted" "hole" "eval-only" ];
 
-  # The holes the LAWS derive: a zfs host's runtime disk endpoints are L2. The install-face
-  # set is empty since the iso installer landed; the shape stays for the next law.
-  installFaceHoles = [ ];
+  # The holes the LAWS derive: a zfs host's runtime disk endpoints are L2, and a squashfs
+  # host's install endpoints are L6 — its store is written by the image, never by an install.
+  installEndpoints = [
+    "image-iso-install" "image-raw-install" "image-qcow2-install"
+    "image-kexec-install" "image-ipxe-install"
+  ];
   lawHoles = {
-    ext4 = installFaceHoles;
-    memory = installFaceHoles;
-    plain = installFaceHoles;
-    arm = installFaceHoles;
-    "ext4-install" = installFaceHoles;
-    zfs = installFaceHoles ++ [ "image-raw" "image-qcow2" ];
-    "zfs-enc" = installFaceHoles ++ [ "image-raw" "image-qcow2" ];
+    ext4 = [ ];
+    memory = installEndpoints;
+    plain = [ ];
+    arm = [ ];
+    "ext4-install" = [ ];
+    zfs = [ "image-raw" "image-qcow2" ];
+    "zfs-enc" = [ "image-raw" "image-qcow2" ];
   };
 
   table = {
@@ -65,11 +68,11 @@ let
       image-qcow2 = "eval-only";
       image-kexec = "eval-only";
       image-ipxe = "eval-only";
-      image-raw-install = "eval-only";
-      image-qcow2-install = "eval-only";
-      image-iso-install = "eval-only";
-      image-kexec-install = "eval-only";
-      image-ipxe-install = "eval-only";
+      image-raw-install = "hole";
+      image-qcow2-install = "hole";
+      image-iso-install = "hole";
+      image-kexec-install = "hole";
+      image-ipxe-install = "hole";
       image-secrets-vfat = "eval-only";
       image-secrets-iso = "eval-only";
       image-secrets-json = "eval-only";

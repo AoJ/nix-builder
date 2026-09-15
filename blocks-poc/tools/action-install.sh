@@ -1,15 +1,13 @@
-# action-install — install a host onto its disk from a RAM install environment. Taken from
-# lib/50_install/niximilate-install.sh (well-tested) and made SHAPE-AWARE: the zfs path is
-# preserved as it was (import-probe, clean export — a half-exported pool boots to
-# emergency), and a generic path is added for a plain filesystem (ext4), whose probe is the
-# mount script itself and whose teardown is a plain unmount.
+# action-install — install a system onto its target from a RAM install environment.
 #
-#   action-install <createScript> <mountScript> <toplevel> <keyDest> <storage> <pool>
+#   action-install <createScript> <mountScript> <toplevel> <keyDest> <storage> <pool> <disk>...
 #
 # createScript brings the target's storage into existence AND mounts it at /mnt (disko's
-# create, or an equivalent). mountScript mounts an already-present target at /mnt. The
-# caller pre-delivers /run/niximilate-sops.age (the host's age key, optional) and, for an
-# encrypted pool, /tmp/zfs_root_key (createScript reads it).
+# create, or an equivalent). mountScript mounts an already-present target at /mnt — the
+# never-reformat probe. The disks are the block devices the target lives on: wiped before a
+# create, never touched on the mount path. The caller pre-delivers /run/sops.age (the
+# installed system's age key, optional) and, for an encrypted pool, /tmp/zfs_root_key
+# (createScript reads it).
 set -euo pipefail
 
 create=${1:-}
@@ -19,39 +17,49 @@ key_dest=${4:-}
 storage=${5:-}
 pool=${6:-}
 
-[ "$#" -eq 6 ] || fatal "usage: action-install <create> <mount> <toplevel> <keyDest> <storage> <pool>"
+[ "$#" -ge 7 ] || fatal "usage: action-install <create> <mount> <toplevel> <keyDest> <storage> <pool> <disk>..."
+shift 6
+disks=("$@")
 required create mounts toplevel key_dest storage
+[ "$storage" != zfs ] || required pool
+
+wipe_and_create() {
+  info "$storage target absent -> wiping ${disks[*]} and creating (this formats the disks)"
+  run "wipe ${disks[*]}" action-wipe "${disks[@]}"
+  # No timeout: create is a destructive, non-rerunnable write — killing it mid-flight
+  # manufactures exactly the half-written state the probe exists to prevent.
+  run "create $storage" "$create"
+}
 
 # Bring the target up at /mnt: never reformat what is already installed there.
 prepare_target() {
   if [ "$storage" = zfs ]; then
     # `zpool import` doubles as the probe — the pool is the thing that persists.
-    if timeout 120 zpool import -f "$pool" 2>/dev/null; then
+    if timeout 120 zpool import -f "$pool" 2> /dev/null; then
       info "pool $pool already exists -> mounting (no reformat)"
       timeout 120 zpool export "$pool"
       run "mount $pool" "$mounts"
     else
-      info "pool $pool absent -> creating (this formats the disk)"
-      run "create $pool" timeout 600 "$create"
+      wipe_and_create
     fi
   else
-    # Generic filesystem: the mount script is the probe. It succeeds on an installed
-    # target and fails on a fresh disk, at which point we create.
-    if timeout 120 "$mounts" 2>/dev/null; then
+    # The mount script is the probe: it succeeds on an installed target, fails on a fresh
+    # disk. A failed probe is not all-or-nothing — it can leave a partial tree under /mnt —
+    # so the create path starts with the wipe's holder release, /mnt included.
+    if timeout 120 "$mounts" 2> /dev/null; then
       info "$storage target already present -> mounting (no reformat)"
     else
-      info "$storage target absent -> creating (this formats the disk)"
-      run "create $storage" timeout 600 "$create"
+      wipe_and_create
     fi
   fi
 }
 
 place_sops_key() {
-  if [ -f /run/niximilate-sops.age ]; then
+  if [ -f /run/sops.age ]; then
     info "placing sops age key -> /mnt$key_dest"
-    install -D -m600 /run/niximilate-sops.age "/mnt$key_dest"
+    install -D -m600 /run/sops.age "/mnt$key_dest"
   else
-    info "no /run/niximilate-sops.age delivered -> skipping sops key"
+    info "no /run/sops.age delivered -> skipping sops key"
   fi
 }
 

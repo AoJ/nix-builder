@@ -28,21 +28,23 @@ let
     pool = "rpool";
     keyDestination = "/var/lib/sops/age.key";
     # Runs under the install action's PATH (nix, zfs, util-linux, coreutils); anything
-    # outside that set is spelled absolutely.
+    # outside that set is spelled absolutely. The target is named by the STABLE identity
+    # the e2e attaches it with (a virtio serial), so the same extracted values work under
+    # every wrapper — a disk-rooted installer shifts /dev/vdX, an identity does not.
     prepare = pkgs.writeShellScript "prepare-zfs" ''
       set -euo pipefail
-      disk=/dev/vdb
+      disk=/dev/disk/by-id/virtio-target
       ${pkgs.gptfdisk}/bin/sgdisk -Z "$disk"
       ${pkgs.gptfdisk}/bin/sgdisk -n 1:0:+512M -t 1:ef00 -c 1:ESP "$disk"
       ${pkgs.gptfdisk}/bin/sgdisk -n 2:0:0 -t 2:bf01 -c 2:zfs "$disk"
       ${pkgs.systemd}/bin/udevadm settle
-      ${pkgs.dosfstools}/bin/mkfs.fat -F 32 -n ESP "''${disk}1"
-      zpool create -f -o ashift=12 -O mountpoint=none -O compression=on rpool "''${disk}2"
+      ${pkgs.dosfstools}/bin/mkfs.fat -F 32 -n ESP "''${disk}-part1"
+      zpool create -f -o ashift=12 -O mountpoint=none -O compression=on rpool "''${disk}-part2"
       zfs create -o mountpoint=legacy rpool/root
       mkdir -p /mnt
       mount -t zfs rpool/root /mnt
       mkdir -p /mnt/boot
-      mount "''${disk}1" /mnt/boot
+      mount "''${disk}-part1" /mnt/boot
     '';
     mount = pkgs.writeShellScript "mount-zfs" ''
       set -euo pipefail
@@ -50,7 +52,31 @@ let
       mkdir -p /mnt
       mount -t zfs rpool/root /mnt
       mkdir -p /mnt/boot
-      mount /dev/vdb1 /mnt/boot
+      mount /dev/disk/by-id/virtio-target-part1 /mnt/boot
+    '';
+  };
+
+  # L3 in practice: the pool is created encrypted with the passphrase the slot delivered —
+  # one more file riding the same embedded delivery (DECIDED: the bricks combine). The
+  # witness line is read back by the encrypted-install e2e.
+  zfsEncInstall = zfsInstall // {
+    prepare = pkgs.writeShellScript "prepare-zfs-enc" ''
+      set -euo pipefail
+      disk=/dev/disk/by-id/virtio-target
+      ${pkgs.gptfdisk}/bin/sgdisk -Z "$disk"
+      ${pkgs.gptfdisk}/bin/sgdisk -n 1:0:+512M -t 1:ef00 -c 1:ESP "$disk"
+      ${pkgs.gptfdisk}/bin/sgdisk -n 2:0:0 -t 2:bf01 -c 2:zfs "$disk"
+      ${pkgs.systemd}/bin/udevadm settle
+      ${pkgs.dosfstools}/bin/mkfs.fat -F 32 -n ESP "''${disk}-part1"
+      zpool create -f -o ashift=12 -O mountpoint=none -O compression=on \
+        -O encryption=on -O keyformat=passphrase \
+        -O keylocation=file:///tmp/zfs_root_key rpool "''${disk}-part2"
+      echo "E2E-POOL-ENCRYPTION $(zfs get -H -o value encryption rpool)" > /dev/console
+      zfs create -o mountpoint=legacy rpool/root
+      mkdir -p /mnt
+      mount -t zfs rpool/root /mnt
+      mkdir -p /mnt/boot
+      mount "''${disk}-part1" /mnt/boot
     '';
   };
 
@@ -123,6 +149,20 @@ in
     storage = "zfs";
     secrets = withSecrets;
     install = zfsInstall;
+  };
+
+  zfs-enc = mk {
+    name = "e2e-zfs-enc";
+    modules = [ ./modules/disk-zfs.nix ];
+    storage = "zfs";
+    secrets = withSecrets // {
+      files = withSecrets.files ++ [{
+        target = "/pool.pass";
+        source = "${fixture}/pool.pass";
+        runtimeSource = "${fixture}/pool.pass";
+      }];
+    };
+    install = zfsEncInstall;
   };
 
   plain = mk {

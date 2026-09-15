@@ -7,9 +7,10 @@
 #   hole       refused at eval by a law — asserted red, not skipped
 #   eval-only  forced to a .drv and NOTHING more; a named debt, not a proof
 #
-# The suite fails if the table is incomplete against the endpoint set, if a status is not
-# one of the four, or if the holes do not match the laws exactly.
-{ pkgs }:
+# Both halves are ENFORCED: holes must match the laws, and every `booted` must be claimed
+# by an e2e's own witness declaration — the same trick in both directions, so the table
+# cannot quietly drift from what the suite actually proves.
+{ pkgs, witnessed }:
 
 let
   inherit (pkgs) lib;
@@ -25,15 +26,16 @@ let
 
   statuses = [ "booted" "built" "hole" "eval-only" ];
 
-  # The holes the LAWS derive: the memory-rooted installer does not exist (every host),
-  # and a zfs host's runtime disk endpoints are L2.
-  memoryInstallHoles = [ "image-iso-install" "image-kexec-install" "image-ipxe-install" ];
+  # The holes the LAWS derive: the iso-rooted installer face is open (every host), and a
+  # zfs host's runtime disk endpoints are L2.
+  installFaceHoles = [ "image-iso-install" ];
   lawHoles = {
-    ext4 = memoryInstallHoles;
-    memory = memoryInstallHoles;
-    plain = memoryInstallHoles;
-    arm = memoryInstallHoles;
-    zfs = memoryInstallHoles ++ [ "image-raw" "image-qcow2" ];
+    ext4 = installFaceHoles;
+    memory = installFaceHoles;
+    plain = installFaceHoles;
+    arm = installFaceHoles;
+    zfs = installFaceHoles ++ [ "image-raw" "image-qcow2" ];
+    "zfs-enc" = installFaceHoles ++ [ "image-raw" "image-qcow2" ];
   };
 
   table = {
@@ -46,8 +48,8 @@ let
       image-raw-install = "eval-only";
       image-qcow2-install = "eval-only";
       image-iso-install = "hole";
-      image-kexec-install = "hole";
-      image-ipxe-install = "hole";
+      image-kexec-install = "eval-only";
+      image-ipxe-install = "eval-only";
       image-secrets-vfat = "booted";
       image-secrets-iso = "eval-only";
       image-secrets-json = "eval-only";
@@ -66,8 +68,8 @@ let
       image-raw-install = "eval-only";
       image-qcow2-install = "eval-only";
       image-iso-install = "hole";
-      image-kexec-install = "hole";
-      image-ipxe-install = "hole";
+      image-kexec-install = "eval-only";
+      image-ipxe-install = "eval-only";
       image-secrets-vfat = "eval-only";
       image-secrets-iso = "eval-only";
       image-secrets-json = "eval-only";
@@ -86,15 +88,35 @@ let
       image-raw-install = "booted";
       image-qcow2-install = "eval-only";
       image-iso-install = "hole";
-      image-kexec-install = "hole";
-      image-ipxe-install = "hole";
+      image-kexec-install = "booted";
+      image-ipxe-install = "eval-only";
       image-secrets-vfat = "eval-only";
       image-secrets-iso = "eval-only";
       image-secrets-json = "eval-only";
       image-personalize = "booted";
       image-personalize-iso = "eval-only";
-      image-personalize-kexec = "eval-only";
+      image-personalize-kexec = "booted";
       closure = "booted";
+      closure-live = "eval-only";
+    };
+    "zfs-enc" = {
+      image-raw = "hole";
+      image-qcow2 = "hole";
+      image-iso = "eval-only";
+      image-kexec = "eval-only";
+      image-ipxe = "eval-only";
+      image-raw-install = "eval-only";
+      image-qcow2-install = "eval-only";
+      image-iso-install = "hole";
+      image-kexec-install = "booted";
+      image-ipxe-install = "eval-only";
+      image-secrets-vfat = "eval-only";
+      image-secrets-iso = "eval-only";
+      image-secrets-json = "eval-only";
+      image-personalize = "eval-only";
+      image-personalize-iso = "eval-only";
+      image-personalize-kexec = "booted";
+      closure = "eval-only";
       closure-live = "eval-only";
     };
     arm = {
@@ -106,8 +128,8 @@ let
       image-raw-install = "eval-only";
       image-qcow2-install = "eval-only";
       image-iso-install = "hole";
-      image-kexec-install = "hole";
-      image-ipxe-install = "hole";
+      image-kexec-install = "eval-only";
+      image-ipxe-install = "eval-only";
       image-secrets-vfat = "eval-only";
       image-secrets-iso = "eval-only";
       image-secrets-json = "eval-only";
@@ -126,8 +148,8 @@ let
       image-raw-install = "eval-only";
       image-qcow2-install = "eval-only";
       image-iso-install = "hole";
-      image-kexec-install = "hole";
-      image-ipxe-install = "hole";
+      image-kexec-install = "eval-only";
+      image-ipxe-install = "eval-only";
       image-secrets-vfat = "eval-only";
       image-secrets-iso = "eval-only";
       image-secrets-json = "eval-only";
@@ -138,6 +160,12 @@ let
       closure-live = "eval-only";
     };
   };
+
+  bootedPairs = lib.sort lib.lessThan (lib.concatMap (h:
+    map (n: "${h}.${n}")
+      (lib.attrNames (lib.filterAttrs (_: s: s == "booted") table.${h})))
+    (lib.attrNames table));
+  witnessedPairs = lib.sort lib.lessThan (lib.unique witnessed);
 
   problems =
     lib.concatMap (h:
@@ -156,7 +184,12 @@ let
       ++ lib.optional (bad != { }) "${h}: unknown statuses ${builtins.toJSON bad}"
       ++ lib.optional (holeDrift != [ ])
         "${h}: holes drift from the laws ${builtins.toJSON holeDrift}")
-      (lib.attrNames table);
+      (lib.attrNames table)
+    ++ lib.optional (bootedPairs != witnessedPairs)
+      ("booted drifts from what the e2e suite witnesses:\n  unwitnessed booted: "
+        + builtins.toJSON (lib.subtractLists witnessedPairs bootedPairs)
+        + "\n  witnessed but not booted: "
+        + builtins.toJSON (lib.subtractLists bootedPairs witnessedPairs));
 
   rendered = lib.concatMapStringsSep "\n" (h:
     lib.concatMapStringsSep "\n" (n: "${h}.${n} ${table.${h}.${n}}")
@@ -165,7 +198,7 @@ let
 in
 
 assert lib.assertMsg (problems == [ ])
-  "the coverage table is incomplete or drifts from the laws:\n${lib.concatStringsSep "\n" problems}";
+  "the coverage table is incomplete or drifts:\n${lib.concatStringsSep "\n" problems}";
 
 {
   inherit table endpointSet lawHoles;

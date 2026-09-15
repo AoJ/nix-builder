@@ -10,7 +10,9 @@ let
   e = compose hosts.ext4;
   fixture = import ../blocks-poc/blocks/personalize/fixture.nix { inherit pkgs; };
 in
-pkgs.runCommand "e2e-kexec-boot"
+{
+  witnesses = [ "ext4.image-kexec" "ext4.image-personalize-kexec" ];
+  check = pkgs.runCommand "e2e-kexec-boot"
   {
     nativeBuildInputs = [ pkgs.qemu ];
     requiredSystemFeatures = [ "kvm" ];
@@ -39,3 +41,5 @@ pkgs.runCommand "e2e-kexec-boot"
     grep -q "E2E-KEY $pub" console.log
     touch "$out"
   ''
+  ;
+}

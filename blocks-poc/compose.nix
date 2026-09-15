@@ -103,11 +103,24 @@ let
       inherit rootMode;
     }).system;
 
+  # Memoized per root mode as ATTRIBUTES, not calls: raw and qcow2 wrap the SAME installer,
+  # and a repeated installerFor call is a second full eval-config of an identical system —
+  # measured at ~350 MB of eval heap per host for nothing.
+  installers = {
+    disk = installerFor "disk";
+    memory = installerFor "memory";
+  };
+
   installEndpoints = lib.listToAttrs (map (f: {
     name = "image-${f}-install";
     value =
-      let installer = installerFor (installerRootModeFor f);
-      in imageFor f (installerShapeFor f) installer.rootMode installer "-install";
+      # The memory installer wears the NETBOOT face; packing it into an iso would evaluate
+      # green and boot nothing — the iso-rooted installer face is the remaining named hole.
+      if f == "iso"
+      then throw "image-iso-install ${host.name}: the iso-rooted installer face is open (Open 5)"
+      else
+        let installer = installers.${installerRootModeFor f};
+        in imageFor f (installerShapeFor f) installer.rootMode installer "-install";
   }) formats);
 
   sidecarFiles = map (f: { inherit (f) target; source = f.runtimeSource; }) host.secrets.files;

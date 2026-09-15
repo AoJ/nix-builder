@@ -19,4 +19,5 @@ pkgs.runCommand "sops-fixture" { nativeBuildInputs = [ pkgs.age pkgs.sops ]; }
     sops --encrypt --age "$(age-keygen -y "$out/other.key")" s.yaml \
       > "$out/bundle-foreign.yaml"
     printf 'not a bundle\n' > "$out/garbage"
+    printf 'fixture-pool-passphrase\n' > "$out/pool.pass"
   ''

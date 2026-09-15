@@ -6,10 +6,13 @@
 let
   boot = import ./lib-boot.nix { inherit pkgs; };
 in
-boot {
+{
+  witnesses = [ "memory.image-raw" "memory.closure" ];
+  check = boot {
   name = "e2e-memory-boot";
   image = (compose hosts.memory).image-raw.file;
   expect = ''
     grep -q "E2E-BOOT-OK e2e-memory" console.log
   '';
+};
 }

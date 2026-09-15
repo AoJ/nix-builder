@@ -200,10 +200,8 @@ Three consequences, derived in the plan and kept:
   runtime half of a zfs host.
 - **The root mode travels with the payload and `image` validates it the same way**: `iso` /
   `kexec` / `ipxe` cannot boot a disk-rooted system, so `(format ⇒ rootMode)` fails at eval like
-  a wrong store shape. This is the axis whose absence let `#image-iso-install` evaluate green as
-  an artifact that could not boot: `install` now takes `rootMode`, and the memory-rooted
-  installer — which does not exist yet — refuses BY NAME, exactly like L2. A missing variant is a
-  red eval, never a green name.
+  a wrong store shape. `install` takes `rootMode` too, and a variant that does not exist refuses
+  BY NAME, exactly like L2 — a missing variant is a red eval, never a green name.
 
 ## Tools
 
@@ -264,8 +262,8 @@ comparing.
 A FAT label is too short to carry a hash, so for labels the rule inverts: **a label is either a
 lookup handle or it is nothing, and only one artifact in an attachment set may own a given
 handle.** The sidecar's `SECRETS` is a handle — its consumer mounts by it; the slot's label is
-deliberately none (`SLOT`), because a slot is found by partlabel or offset — measured, a slot
-labelled like the sidecar made udev's by-label pick the empty slot over the sidecar beside it.
+deliberately none (`SLOT`), because a slot is found by partlabel or offset and a second `SECRETS`
+would race the real one.
 
 **Both properties are per-architecture.** A native and an emulated build of one squashfs come out
 the same size and not the same bytes, so "the same bytes" holds for two builds on the same
@@ -314,8 +312,7 @@ out.
 Two things are in flight and they are different: the system being installed, and the system doing
 the installing. The block builds the second and carries the first. **What gets installed is always
 the host as it runs**: a live format on an `-install` endpoint shapes only the wrapper's
-packaging, never which closure is carried — the PoC's compose test is what caught the composer
-carrying the live variant instead.
+packaging, never which closure is carried.
 
 Two SLOTS are in flight too, with different lifetimes, and one field cannot carry both: the
 installer's OWN slot — where the install-time key is read from, `image`'s input when the
@@ -327,9 +324,12 @@ which is this block's `keyDestination` input. The contract keeps them apart.
 from its single source in `lib/50_install/` through the privileged tools assembly. Nothing is
 copied and nothing reimplements the flow; the block's installer OS is a minimal system of the
 block's own whose one service runs that action against the six inputs (`prepare` doubles as the
-diskoScript role — it creates AND mounts; `mount` is the never-reformat path). The installer's
-slot feeds the action's delivered-key convention (`/run/niximilate-sops.age`), so phase 2 on an
-`-install` artifact is the same personalize as everywhere else.
+diskoScript role — it creates AND mounts; `mount` is the never-reformat path). The installer
+ROOTS per wrapper: its own disk partition for raw/qcow2, the netboot face for kexec/ipxe — the
+same face the live variant wears, taken from tools. The installer's slot feeds the action's
+delivered-key convention (`/run/niximilate-sops.age`, and `/tmp/zfs_root_key` for a pool
+passphrase riding the same slot), whichever face delivered it — so phase 2 on an `-install`
+artifact is the same personalize as everywhere else.
 
 The action is pool-centric — that is its home turf and exactly the L2 case. A non-zfs install
 target is not covered by it today; the hole is named in Open, not papered over.
@@ -350,7 +350,7 @@ does — the store is at `/nix/store`, the database at `/nix/var/nix/db`:
 |---|---|
 | ext4 (writable) | both live on one writable filesystem, so the database is written **at build time** and the image carries it |
 | squashfs (read-only) | the image is mounted read-only at `/nix/store`, and the database's place is a tmpfs that boots empty — so the image carries only a dump, and a **unit loads it at every boot** |
-| squashfs in the initrd (netboot) | the same read-only image, ridden as an appended cpio segment and loop-mounted by the netboot FACE (`tools/netboot-face.nix` — tmpfs root, overlayed store, the registration, and the initrd-slot hand-over, one module, image-media priority) |
+| squashfs in the initrd (netboot) | the same read-only image, ridden as an appended cpio segment and loop-mounted by the netboot FACE (`tools/netboot-face.nix`) — one module carrying the mounts, the registration, and the initrd-slot hand-over |
 
 With a `profile` toplevel the ext4 shape is a bootable NixOS ROOT, not just a store filesystem:
 generation link + `system` profile symlink (what `systemd-boot-builder` reads on the first
@@ -467,7 +467,7 @@ What the faces ARE is fixed by the format:
 |---|---|---|
 | iso | a file at a path inside the iso9660 | loop mount of `${sysroot}/iso/<path>`, `neededForBoot` |
 | raw / qcow2 | a GPT partition, found by NAME | mount of `/dev/disk/by-partlabel/<name>` |
-| kexec / ipxe | an appended cpio segment in the initrd — RESERVED by the build as a marker segment, so phase 2 can refuse a tree that never declared one | stage 1 hands the appended files over at `/run/initrd-slot` — initramfs contents are discarded at switch-root, so the hand-over IS the face |
+| kexec / ipxe | an appended cpio segment in the initrd — RESERVED by the build as a marker segment, so phase 2 can refuse a tree that never declared one | stage 1 hands the appended files over at `/run/initrd-slot` |
 
 For `iso` the slot is a file and not the isohybrid partition, because that partition is not a
 handle: a SATA cdrom exposes no partitions at all, virtio does, and a second disk shifts the
@@ -578,7 +578,12 @@ the design, not the test author's taste.
   (host, endpoint) pair carries exactly one declared status — `booted`, `built`, `hole`,
   `eval-only` — and the suite fails when the table is incomplete against the endpoint set, when
   a declared hole does not refuse, or when the holes drift from the laws. "It only evaluates" is
-  a visible name someone wrote down, never a default the suite hands out.
+  a visible name someone wrote down, never a default the suite hands out. Every `booted` must be
+  claimed by an e2e's own witness declaration, asserted as set equality — the table cannot drift
+  from what the suite proves in either direction.
+- **The eval gate is one host per attribute, and the gates run as separate processes** — the
+  whole set in one evaluation does not fit a small machine, and a check that is green only where
+  there is enough RAM is not a check.
 
 ## Open
 
@@ -590,20 +595,9 @@ the design, not the test author's taste.
 3. What belongs in `tools` besides the bash tooling and the store.
 4. The self-install RAM bound wants an eval-time assertion: closure size against the tmpfs cap —
    a live ISO's `/` and `/nix/.rw-store` each default to 50% of RAM and share the same pages.
-5. The installer OS is disk-rooted (the raw/qcow2 wrapper); the iso/kexec wrappers need its
-   memory-rooted variant — the live-variant story applied to the installer.
+5. The iso-rooted installer face; until it exists, `image-iso-install` refuses by name.
 6. A non-zfs install target: `niximilate-install` is pool-centric (probe, export, the pool
    argument), so an ext4 target has no install path yet.
-7. Encrypted-pool install, DECIDED and unbuilt: the passphrase is one more file in the delivery
-   set (embedded in the installer's slot, or deploy-pushed) feeding the action's
-   `/tmp/zfs_root_key` convention. What remains is the implementation and its e2e — the current
-   cycle installs an unencrypted pool.
-8. The host schema seam exists (see its section) but is data-only so far: `requires.secrets`
-   → the files/keyTarget record, and driving the composer's host records THROUGH the seam,
-   remain — that wiring is the integration step itself, and the place the withdrawn branch
-   died (the deletions came last).
-9. RESOLVED (DECIDED: squashfs-in-initrd — compressed, lazily read): the face is
-   `tools/netboot-face.nix`, the kexec payload boots in e2e, and the memory-rooted installer
-   is unblocked.
-10. Building (not just evaluating) arm artifacts on an x86 box via binfmt — a want to try once
-   the blocks settle; today the arm row is eval-only and says so.
+7. The schema seam is data-only so far: `requires.secrets` → the files/keyTarget record, and
+   driving the composer's host records through the seam, remain for integration.
+8. Building (not just evaluating) arm artifacts on an x86 box via binfmt.

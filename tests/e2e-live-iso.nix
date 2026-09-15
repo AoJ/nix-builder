@@ -12,7 +12,9 @@ let
   fixture = import ../blocks-poc/blocks/personalize/fixture.nix { inherit pkgs; };
   boot = import ./lib-boot.nix { inherit pkgs; };
 in
-boot {
+{
+  witnesses = [ "ext4.image-iso" "ext4.image-personalize-iso" "ext4.closure-live" ];
+  check = boot {
   name = "e2e-live-iso";
   image = e.image-iso.file;
   prepare = ''
@@ -23,4 +25,5 @@ boot {
     grep -q "E2E-BOOT-OK e2e-ext4" console.log
     grep -q "E2E-KEY $pub" console.log
   '';
+};
 }

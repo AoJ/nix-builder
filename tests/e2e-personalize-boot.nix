@@ -8,7 +8,9 @@ let
   fixture = import ../blocks-poc/blocks/personalize/fixture.nix { inherit pkgs; };
   e = compose hosts.ext4;
 in
-boot {
+{
+  witnesses = [ "ext4.image-personalize" ];
+  check = boot {
   name = "e2e-personalize-boot";
   image = e.image-raw.file;
   prepare = ''
@@ -19,4 +21,5 @@ boot {
     grep -q "E2E-BOOT-OK e2e-ext4" console.log
     grep -q "E2E-KEY $pub" console.log
   '';
+};
 }

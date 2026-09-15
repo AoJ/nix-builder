@@ -12,7 +12,9 @@ let
   fixture = import ../blocks-poc/blocks/personalize/fixture.nix { inherit pkgs; };
   e = compose hosts.ext4;
 in
-boot {
+{
+  witnesses = [ "ext4.image-raw" "ext4.image-secrets-vfat" "ext4.closure" ];
+  check = boot {
   name = "e2e-raw-boot";
   image = e.image-raw.file;
   prepare = ''
@@ -25,4 +27,5 @@ boot {
     grep -q "E2E-KEY-EMPTY" console.log
     grep -q "E2E-SIDECAR $pub" console.log
   '';
+};
 }

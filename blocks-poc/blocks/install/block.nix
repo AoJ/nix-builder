@@ -45,7 +45,7 @@ in
     rootMode = mkOption {
       type = types.enum [ "disk" "memory" ];
       default = "disk";
-      description = "How the INSTALLER is rooted. The memory variant does not exist yet and refuses.";
+      description = "How the INSTALLER is rooted: its own disk partition, or the netboot face.";
     };
 
     out = mkOption {
@@ -74,21 +74,15 @@ in
 
   config.out.system =
     let
-      installer =
-        # The same named-hole discipline as L2: a hole the eval names, never a green
-        # artifact that cannot boot.
-        if config.rootMode == "memory"
-        then throw ("install ${config.name}: the memory-rooted installer does not exist yet"
-          + " — iso/kexec/ipxe install wrappers wait on it")
-        else import (pkgs.path + "/nixos/lib/eval-config.nix") {
-          inherit (config) system;
-          modules = [
-            (import ./installer-profile.nix {
-              inherit (config) name prepare mount toplevel pool keyDestination;
-              inherit (tools) niximilateInstall;
-            })
-          ];
-        };
+      installer = import (pkgs.path + "/nixos/lib/eval-config.nix") {
+        inherit (config) system;
+        modules = [
+          (import ./installer-profile.nix {
+            inherit (config) name prepare mount toplevel pool keyDestination rootMode;
+            inherit (tools) niximilateInstall netbootFace;
+          })
+        ];
+      };
       toplevel = installer.config.system.build.toplevel;
       efiArch = installer.pkgs.stdenv.hostPlatform.efiArch;
     in

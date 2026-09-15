@@ -54,6 +54,16 @@ in
       description = "Set for the iso wrapper: the memory face becomes the iso face, keyed by this label.";
     };
 
+    slotName = mkOption {
+      type = types.str;
+      description = "The slot's name (partlabel) — where the installer reads its install-time key.";
+    };
+
+    slotFile = mkOption {
+      type = types.str;
+      description = "The slot's artifact-face path on the medium; the composer's naming policy, not restated.";
+    };
+
     out = mkOption {
       readOnly = true;
       type = types.submodule {
@@ -84,8 +94,9 @@ in
         inherit (config) system;
         modules = [
           (import ./installer-profile.nix {
-            inherit (config) name prepare mount toplevel pool keyDestination rootMode isoLabel;
-            inherit (tools) niximilateInstall netbootFace isoFace;
+            inherit (config) name prepare mount toplevel pool keyDestination rootMode isoLabel
+              slotName slotFile;
+            inherit (tools) niximilateInstall netbootFace isoFace e2eRecord;
           })
         ];
       };

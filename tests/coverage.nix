@@ -3,7 +3,6 @@
 #
 #   booted     an e2e boots the artifact (or, for phase 2, runs it against one) and reads
 #              the witness off the running system
-#   built      a suite builds and probes the artifact for this host
 #   hole       refused at eval by a law — asserted red, not skipped
 #   eval-only  forced to a .drv and NOTHING more; a named debt, not a proof
 #
@@ -24,7 +23,7 @@ let
     "closure" "closure-live"
   ];
 
-  statuses = [ "booted" "built" "hole" "eval-only" ];
+  statuses = [ "booted" "hole" "eval-only" ];
 
   # The holes the LAWS derive: a zfs host's runtime disk endpoints are L2. The install-face
   # set is empty since the iso installer landed; the shape stays for the next law.

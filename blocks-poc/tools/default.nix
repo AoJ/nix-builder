@@ -24,4 +24,23 @@ in
   roStore = import ./ro-store.nix { inherit pkgs; };
   netbootFace = import ./netboot-face.nix { inherit pkgs; };
   isoFace = import ./iso-face.nix { inherit pkgs; };
+
+  # Deterministic e2e capture: append a witness line to the vfat "result" disk the harness
+  # attaches (stable virtio serial e2eout), instead of racing serial output that a fast
+  # guest can lose before qemu drains it. Mounts per call, so sequential writers from
+  # different services are safe. The harness reads the disk with mtools after qemu exits.
+  e2eRecord = pkgs.writeShellScriptBin "e2e-record" ''
+    set -eu
+    dev=/dev/disk/by-id/virtio-e2eout
+    [ -e "$dev" ] || { echo "e2e-record: no result disk" >&2; exit 0; }
+    mnt=/run/e2e-out
+    # Mount ONCE and leave it: a mount/umount per call races the vfat ("device busy" on the
+    # next mount before writeback settles) and silently drops lines. Shutdown unmounts and
+    # flushes; the per-write sync is belt-and-braces.
+    ${pkgs.coreutils}/bin/mkdir -p "$mnt"
+    ${pkgs.util-linux}/bin/mountpoint -q "$mnt" \
+      || ${pkgs.util-linux}/bin/mount -t vfat -o rw "$dev" "$mnt"
+    ${pkgs.coreutils}/bin/printf '%s\n' "$*" >> "$mnt/log"
+    ${pkgs.coreutils}/bin/sync
+  '';
 }

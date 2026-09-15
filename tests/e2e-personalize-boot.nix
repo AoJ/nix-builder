@@ -18,9 +18,9 @@ in
     pub="$(${pkgs.age}/bin/age-keygen -y ${fixture}/host.key)"
   '';
   expect = ''
-    grep -q "E2E-BOOT-OK e2e-ext4" console.log
-    grep -q "E2E-DB-OK" console.log
-    grep -q "E2E-KEY $pub" console.log
+    grep -q "E2E-BOOT-OK e2e-ext4" result
+    grep -q "E2E-DB-OK" result
+    grep -q "E2E-KEY $pub" result
   '';
 };
 }

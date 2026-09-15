@@ -12,8 +12,8 @@ in
   name = "e2e-memory-boot";
   image = (compose hosts.memory).image-raw.file;
   expect = ''
-    grep -q "E2E-BOOT-OK e2e-memory" console.log
-    grep -q "E2E-DB-OK" console.log
+    grep -q "E2E-BOOT-OK e2e-memory" result
+    grep -q "E2E-DB-OK" result
   '';
 };
 }

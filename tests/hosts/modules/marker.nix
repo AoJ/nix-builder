@@ -1,38 +1,43 @@
-# The e2e witness: prints what a booted system can PROVE onto the serial console — that
-# userspace came up, what the slot holds, and what an install landed at the key's
-# destination — then powers off so qemu exits on its own.
+# The e2e witness: records onto the result disk (not the serial console) what a booted
+# system can PROVE — that userspace came up, that the nix DB is valid, what the slot holds,
+# what an install landed — then powers off so qemu exits on its own.
+# slotName / slotFile come from tools — the runtime read paths (partlabel, iso file) are
+# derived from the same source the image block built the slot from, not restated here.
+{ record, slotName, slotFile }:
 { pkgs, ... }:
 {
   systemd.services.e2e-marker = {
     wantedBy = [ "multi-user.target" ];
     serviceConfig.Type = "oneshot";
-    path = [ pkgs.age pkgs.coreutils pkgs.util-linux pkgs.systemd pkgs.nix ];
+    path = [ record pkgs.age pkgs.coreutils pkgs.util-linux pkgs.systemd pkgs.nix ];
     script = ''
-      echo "E2E-BOOT-OK $(cat /proc/sys/kernel/hostname)" > /dev/console
+      e2e-record "E2E-BOOT-OK $(cat /proc/sys/kernel/hostname)"
 
       # The nix DB must be VALID, not merely present: walking the running system's closure
-      # reads it, and an empty DB (the register-nix-paths bug class — a load that silently
-      # did not run) fails here rather than only when something later runs nixos-install.
+      # reads it, and an empty DB (a registration that silently did not run) fails here
+      # rather than only when something later runs nixos-install.
       if nix-store -q --requisites /run/current-system > /dev/null 2>&1; then
-        echo "E2E-DB-OK" > /dev/console
+        e2e-record "E2E-DB-OK"
       else
-        echo "E2E-DB-BAD" > /dev/console
+        e2e-record "E2E-DB-BAD"
       fi
+
       report_slot() {
         if [ -s /run/slot/sops.age ]; then
-          echo "E2E-KEY $(age-keygen -y /run/slot/sops.age)" > /dev/console
+          e2e-record "E2E-KEY $(age-keygen -y /run/slot/sops.age)"
         else
-          echo "E2E-KEY-EMPTY" > /dev/console
+          e2e-record "E2E-KEY-EMPTY"
         fi
       }
       mkdir -p /run/slot
-      slot=/dev/disk/by-partlabel/secrets
+      slot=/dev/disk/by-partlabel/${slotName}
+      iso_slot=/iso${slotFile}
       if [ -e "$slot" ]; then
         if mount -o ro "$slot" /run/slot 2>/dev/null; then
           report_slot
         fi
-      elif [ -e /iso/boot/secrets.img ]; then
-        if mount -o ro,loop /iso/boot/secrets.img /run/slot 2>/dev/null; then
+      elif [ -e "$iso_slot" ]; then
+        if mount -o ro,loop "$iso_slot" /run/slot 2>/dev/null; then
           report_slot
         fi
       elif [ -d /run/initrd-slot ]; then
@@ -40,20 +45,20 @@
           cp /run/initrd-slot/sops.age /run/slot/sops.age
           report_slot
         else
-          echo "E2E-KEY-EMPTY" > /dev/console
+          e2e-record "E2E-KEY-EMPTY"
         fi
       fi
       if [ -s /var/lib/sops/age.key ]; then
-        echo "E2E-INSTALLED-KEY $(age-keygen -y /var/lib/sops/age.key)" > /dev/console
+        e2e-record "E2E-INSTALLED-KEY $(age-keygen -y /var/lib/sops/age.key)"
       fi
       side=/dev/disk/by-label/SECRETS
       if [ -e "$side" ]; then
         mkdir -p /run/sidecar
         if mount -o ro "$side" /run/sidecar 2>/dev/null; then
           if [ -s /run/sidecar/sops.age ]; then
-            echo "E2E-SIDECAR $(age-keygen -y /run/sidecar/sops.age)" > /dev/console
+            e2e-record "E2E-SIDECAR $(age-keygen -y /run/sidecar/sops.age)"
           else
-            echo "E2E-SIDECAR-EMPTY" > /dev/console
+            e2e-record "E2E-SIDECAR-EMPTY"
           fi
         fi
       fi

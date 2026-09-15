@@ -10,6 +10,8 @@ let
   secrets = import ./blocks/secrets { inherit pkgs tools; };
   personalize = import ./blocks/personalize { inherit pkgs tools; };
 
+  slot = import ./slot.nix;
+
   formats = [ "iso" "raw" "qcow2" "kexec" "ipxe" ];
   liveFormats = [ "iso" "kexec" "ipxe" ];
 in
@@ -72,7 +74,7 @@ let
   # storage layout that owns a shape would be READ here, not consulted by a block.
   slotFor = _format:
     if builtins.elem "embedded" delivery
-    then { name = "secrets"; sizeMiB = 4; }
+    then { inherit (slot) name; sizeMiB = 4; }
     else null;
 
   imageFor = format: shape: rootMode: system: nameSuffix:
@@ -102,6 +104,8 @@ let
       closure = [ host.variants.runtime.toplevel ];
       inherit (host.install) prepare mount pool keyDestination;
       inherit rootMode isoLabel;
+      slotName = slot.name;
+      slotFile = slot.file;
     }).system;
 
   # Memoized per face as ATTRIBUTES, not calls: raw and qcow2 wrap the SAME installer, and

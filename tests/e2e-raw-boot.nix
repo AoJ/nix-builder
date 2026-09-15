@@ -23,10 +23,10 @@ in
   '';
   extraDrives = "-drive if=virtio,format=raw,file=sidecar.img";
   expect = ''
-    grep -q "E2E-BOOT-OK e2e-ext4" console.log
-    grep -q "E2E-DB-OK" console.log
-    grep -q "E2E-KEY-EMPTY" console.log
-    grep -q "E2E-SIDECAR $pub" console.log
+    grep -q "E2E-BOOT-OK e2e-ext4" result
+    grep -q "E2E-DB-OK" result
+    grep -q "E2E-KEY-EMPTY" result
+    grep -q "E2E-SIDECAR $pub" result
   '';
 };
 }

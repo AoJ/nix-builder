@@ -33,6 +33,7 @@ let
     memory = installFaceHoles;
     plain = installFaceHoles;
     arm = installFaceHoles;
+    "ext4-install" = installFaceHoles;
     zfs = installFaceHoles ++ [ "image-raw" "image-qcow2" ];
     "zfs-enc" = installFaceHoles ++ [ "image-raw" "image-qcow2" ];
   };
@@ -156,6 +157,26 @@ let
       image-personalize-iso = "eval-only";
       image-personalize-kexec = "eval-only";
       closure = "eval-only";
+      closure-live = "eval-only";
+    };
+    "ext4-install" = {
+      image-raw = "eval-only";
+      image-iso = "eval-only";
+      image-qcow2 = "eval-only";
+      image-kexec = "eval-only";
+      image-ipxe = "eval-only";
+      image-raw-install = "eval-only";
+      image-qcow2-install = "eval-only";
+      image-iso-install = "eval-only";
+      image-kexec-install = "booted";
+      image-ipxe-install = "eval-only";
+      image-secrets-vfat = "eval-only";
+      image-secrets-iso = "eval-only";
+      image-secrets-json = "eval-only";
+      image-personalize = "eval-only";
+      image-personalize-iso = "eval-only";
+      image-personalize-kexec = "booted";
+      closure = "booted";
       closure-live = "eval-only";
     };
   };

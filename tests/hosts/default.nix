@@ -7,6 +7,9 @@
 let
   fixture = import ../../blocks-poc/blocks/personalize/fixture.nix { inherit pkgs; };
   extract = import ../extract.nix;
+  inherit (pkgs) lib;
+  diskoModule = (import ../../disko-pin.nix) + "/module.nix";
+  targetDevice = "/dev/disk/by-id/virtio-target";
 
   evalHost = system: modules:
     import (pkgs.path + "/nixos/lib/eval-config.nix") {
@@ -97,7 +100,7 @@ let
   };
 
   mk = { name, modules, storage, secrets, install ? syntheticInstall,
-         system ? "x86_64-linux" }:
+         system ? "x86_64-linux", slotFromLayout ? null, diskoInstall ? false }:
     let
       runtime = evalHost system ([
         ./modules/base.nix
@@ -105,6 +108,16 @@ let
         (import ./modules/marker.nix { record = tools.e2eRecord; })
         { networking.hostName = name; }
       ] ++ modules);
+      # A disko host's install prepare/mount ARE disko's own scripts — create+mount and
+      # mount-existing — so the same layout that boots the host also formats it. No
+      # hand-rolled partitioning.
+      installFinal =
+        if diskoInstall then {
+          prepare = runtime.config.system.build.diskoScript;
+          mount = runtime.config.system.build.mountScript;
+          pool = "";
+          keyDestination = "/var/lib/sops/age.key";
+        } else install;
       # The real extendModules step: each live variant is the host plus a face module,
       # evaluated by the composer's side of the world — never inside a block. There is one
       # variant per live format; no generic "live" fallback, so a missing one is an eval
@@ -124,8 +137,8 @@ let
           modules = [ (import ./modules/live-iso.nix { inherit label; face = tools.isoFace; }) ];
         });
       };
-      inherit install;
-    };
+      install = installFinal;
+    } // lib.optionalAttrs (slotFromLayout != null) { inherit slotFromLayout; };
 in
 {
   ext4 = mk {
@@ -184,5 +197,21 @@ in
     modules = [ ./modules/disk-ext4.nix ];
     storage = "ext4";
     secrets = withSecrets;
+  };
+
+  # The ext4 INSTALL host: a real disko layout owns the disk AND the slot partition, so the
+  # install action formats ext4 through disko's own scripts (no zpool anywhere) and the
+  # composer reads the slot name from the layout (Open 1). The install cycle proves the
+  # non-zfs target path (Open 6).
+  ext4-install = mk {
+    name = "e2e-ext4-install";
+    modules = [
+      diskoModule
+      (import ./modules/disk-ext4-layout.nix { device = targetDevice; slotName = "secrets"; })
+    ];
+    storage = "ext4";
+    secrets = withSecrets;
+    diskoInstall = true;
+    slotFromLayout = "secrets";
   };
 }

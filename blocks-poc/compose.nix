@@ -10,10 +10,6 @@ let
   secrets = import ./blocks/secrets { inherit pkgs tools; };
   personalize = import ./blocks/personalize { inherit pkgs tools; };
 
-  # The embedded slot: the composer names it and picks its size. Where it then LIVES per
-  # format is tools.slotFace; the image builds from it and the installer reads from it.
-  slot = { name = "secrets"; sizeMiB = 4; };
-
   formats = [ "iso" "raw" "qcow2" "kexec" "ipxe" ];
   liveFormats = [ "iso" "kexec" "ipxe" ];
 in
@@ -21,6 +17,11 @@ in
 host:
 
 let
+  # The embedded slot: the composer picks its size and NAMES it — inventing the name where
+  # nothing else owns it, or READING it from a storage layout that does (Open 1). A host
+  # whose ext4 layout declares the slot partition surfaces it as slotFromLayout.
+  slot = { name = host.slotFromLayout or "secrets"; sizeMiB = 4; };
+
   # The label is the one constant spanning eval and artifact: both sides derive it from
   # the same name through the same ids tool, and the e2e boot tests the agreement.
   isoLabel = lib.toUpper (tools.ids.volumeId "${host.name}-iso:iso");

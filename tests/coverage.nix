@@ -32,6 +32,7 @@ let
     ext4 = memoryInstallHoles;
     memory = memoryInstallHoles;
     plain = memoryInstallHoles;
+    arm = memoryInstallHoles;
     zfs = memoryInstallHoles ++ [ "image-raw" "image-qcow2" ];
   };
 
@@ -91,6 +92,25 @@ let
       image-personalize = "booted";
       image-personalize-iso = "eval-only";
       closure = "booted";
+      closure-live = "eval-only";
+    };
+    arm = {
+      image-raw = "eval-only";
+      image-iso = "eval-only";
+      image-qcow2 = "eval-only";
+      image-kexec = "eval-only";
+      image-ipxe = "eval-only";
+      image-raw-install = "eval-only";
+      image-qcow2-install = "eval-only";
+      image-iso-install = "hole";
+      image-kexec-install = "hole";
+      image-ipxe-install = "hole";
+      image-secrets-vfat = "eval-only";
+      image-secrets-iso = "eval-only";
+      image-secrets-json = "eval-only";
+      image-personalize = "eval-only";
+      image-personalize-iso = "eval-only";
+      closure = "eval-only";
       closure-live = "eval-only";
     };
     plain = {

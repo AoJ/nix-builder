@@ -495,6 +495,18 @@ the wrong offset is not recoverable by noticing afterwards. So `image` reserves 
 it, and leaves it empty: empty is what keeps phase one cacheable and secret-free, formatted is
 what lets phase two refuse.
 
+## The schema seam
+
+`docs/blocks/tests/schema.nix` is the one-direction mapping from the repo's typed host schema
+onto the dimensions: `root.medium` splits into `runtime.mode` + `runtime.storage`,
+`secretsTransport.kind` names exactly one `secrets.delivery` member (sops-boot → deploy,
+creds-cd → sidecar, baked-partition → embedded), `delivery.modes` survives as the list of
+endpoints the host's operations consume, and `pool`/`encryption` ride to the install per L2/L3.
+A pair of old values that does not go together — `boot=ram` with a disk medium, an unknown
+mode — is REFUSED at eval, never guessed around. `profileModules { live }` appears nowhere: it
+is a call-site argument, not host data, and it dies with the old image path. The seam's test
+runs the design's replacement table as code, against fixtures AND a live host.nix sample.
+
 ## What integration deletes
 
 The blocks path uses no nixos-generators and no iso-image module anywhere — `#image-iso` is the
@@ -565,10 +577,11 @@ the design, not the test author's taste.
 7. Encrypted-pool install: the passphrase delivery at install time (the action's
    `/tmp/zfs_root_key` convention) — the e2e installs an unencrypted pool; L3's real case still
    needs the passphrase channel composed.
-8. The host schema seam: nothing yet maps the repo's typed host schema —
-   `realization.root.medium`, `secretsTransport.kind`, `profileModules.live`,
-   `requires.secrets` — onto the dimensions and the composer's record. It is the remaining
-   integration work, and the place the withdrawn branch died (the deletions came last).
+8. The host schema seam exists (see its section) but is data-only so far: `requires.secrets`
+   → the files/keyTarget record, and driving the composer's host records THROUGH the seam,
+   remain — that wiring is the integration step itself, and the place the withdrawn branch
+   died (the deletions came last).
 9. The netboot runtime face: the appended cpio store is discarded at switch-root, so a booted
-   kexec/ipxe payload needs either initramfs-as-root or a squashfs-in-initrd mount (the nixpkgs
-   netboot pattern) — a decision to take, then the kexec boot e2e.
+   kexec/ipxe payload needs either initramfs-as-root or a squashfs-in-initrd mount — nixpkgs
+   uses squashfs-in-initrd everywhere, which is precedent, not a decision; aoj is weighing the
+   consequences. The kexec boot e2e and the memory-rooted installer both wait on this.

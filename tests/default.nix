@@ -16,6 +16,7 @@ in
   endpoints = builtins.mapAttrs (_: compose) hosts;
 
   test-coverage = coverage.check;
+  test-schema = import ./schema-test.nix { inherit pkgs; };
   test-hosts-compose = import ./compose-test.nix { inherit pkgs compose hosts coverage; };
   e2e-raw-boot = import ./e2e-raw-boot.nix { inherit pkgs compose hosts; };
   e2e-memory-boot = import ./e2e-memory-boot.nix { inherit pkgs compose hosts; };

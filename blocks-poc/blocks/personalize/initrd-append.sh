@@ -29,8 +29,19 @@ while IFS=$'\t' read -r src dest; do
 done < "$manifest"
 
 before=$(stat -c%s "$artifact/initrd")
-(cd "$staged" && find . -mindepth 1 | sort \
-  | cpio -o -H newc -R +0:+0 --reproducible --quiet) >> "$artifact/initrd"
+# The subshell restates the modes it needs: inherited options are one refactor away from
+# not being there, and a cpio that fails mid-pipeline must never leave a half-appended
+# initrd looking done.
+sc=0
+(
+  set -euo pipefail
+  cd "$staged"
+  find . -mindepth 1 | sort | cpio -o -H newc -R +0:+0 --reproducible --quiet
+) >> "$artifact/initrd" || sc=$?
+if [ "$sc" != 0 ]; then
+  truncate -s "$before" "$artifact/initrd"
+  fatal "cpio append failed (exit $sc); the artifact was restored to its prior size"
+fi
 
 # cpio -t strips the leading "./" a find-fed archive stores, so the anchor is the bare
 # relative path.

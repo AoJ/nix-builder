@@ -17,8 +17,11 @@ let
       staged="$(mktemp -d)"
       touch "$staged/.slot-${slotName}"
       find "$staged" -exec touch -h -d @1 {} +
-      (cd "$staged" && find . -mindepth 1 | sort \
-        | cpio -o -H newc -R +0:+0 --reproducible --quiet) > "$out"
+      (
+        set -euo pipefail
+        cd "$staged"
+        find . -mindepth 1 | sort | cpio -o -H newc -R +0:+0 --reproducible --quiet
+      ) > "$out"
     '';
 in
 pkgs.runCommand "${name}-netboot" { nativeBuildInputs = [ pkgs.coreutils ]; }

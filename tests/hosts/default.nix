@@ -8,10 +8,9 @@ let
   fixture = import ../../blocks-poc/blocks/personalize/fixture.nix { inherit pkgs; };
   extract = import ../extract.nix;
 
-  evalHost = modules:
+  evalHost = system: modules:
     import (pkgs.path + "/nixos/lib/eval-config.nix") {
-      system = "x86_64-linux";
-      inherit modules;
+      inherit system modules;
     };
 
   syntheticInstall = {
@@ -71,9 +70,10 @@ let
     }];
   };
 
-  mk = { name, modules, storage, secrets, install ? syntheticInstall }:
+  mk = { name, modules, storage, secrets, install ? syntheticInstall,
+         system ? "x86_64-linux" }:
     let
-      runtime = evalHost ([
+      runtime = evalHost system ([
         ./modules/base.nix
         ./modules/marker.nix
         { networking.hostName = name; }
@@ -83,8 +83,7 @@ let
       live = runtime.extendModules { modules = [ ./modules/live.nix ]; };
     in
     {
-      inherit name secrets;
-      system = "x86_64-linux";
+      inherit name secrets system;
       variants = {
         runtime = extract runtime // { inherit storage; };
         live = extract live;
@@ -127,5 +126,17 @@ in
     modules = [ ./modules/disk-ext4.nix ];
     storage = "ext4";
     secrets = noSecrets;
+  };
+
+  # The arch-split tripwire: a REAL aarch64 configuration, evaluated on this x86 box (pure
+  # eval — nothing aarch64 is ever built here). The extraction must find the aa64 bootloader
+  # in the TARGET's systemd and every endpoint must force to a .drv; building and booting
+  # belongs to a builder with arm capacity.
+  arm = mk {
+    name = "e2e-arm";
+    system = "aarch64-linux";
+    modules = [ ./modules/disk-ext4.nix ];
+    storage = "ext4";
+    secrets = withSecrets;
   };
 }

@@ -21,5 +21,10 @@ cp "$registration" "$staged/nix/store/nix-path-registration"
 # Canonical times, forced ownership, renumbered inodes, ignored device numbers: every one of
 # these is a wall-clock or builder-local value that would otherwise leak into the bytes.
 find "$staged" -exec touch -h -d @1 {} +
-(cd "$staged" && find . -mindepth 1 | sort \
-  | cpio -o -H newc -R +0:+0 --reproducible --quiet) > "$out"
+sc=0
+(
+  set -euo pipefail
+  cd "$staged"
+  find . -mindepth 1 | sort | cpio -o -H newc -R +0:+0 --reproducible --quiet
+) > "$out" || sc=$?
+[ "$sc" = 0 ] || fatal "store cpio failed (exit $sc)"

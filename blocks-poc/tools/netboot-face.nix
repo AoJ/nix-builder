@@ -31,10 +31,17 @@ lib.mkMerge [
       description = "hand appended slot files over to the real root";
       wantedBy = [ "initrd.target" ];
       before = [ "initrd-switch-root.service" ];
-      after = [ "sysroot.mount" ];
-      unitConfig.DefaultDependencies = false;
+      # AFTER /sysroot/run is mounted, not just /sysroot: the hand-over writes into the real
+      # root's /run, and writing before that mount lands lets the mount shadow the files (and
+      # races the copy into a failure). RequiresMountsFor makes the ordering explicit.
+      after = [ "sysroot.mount" "sysroot-run.mount" ];
+      unitConfig = {
+        DefaultDependencies = false;
+        RequiresMountsFor = [ "/sysroot/run" ];
+      };
       serviceConfig.Type = "oneshot";
       script = ''
+        set -eu
         mkdir -p /sysroot/run/initrd-slot
         for f in /*; do
           if [ -f "$f" ] && [ "$f" != /nix-store.squashfs ]; then

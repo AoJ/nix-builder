@@ -4,7 +4,7 @@
 # partition (raw/qcow2), the netboot face (kexec/ipxe), or the iso face keyed by the
 # medium's label (iso). Witnesses go to the result disk via e2e-record, not the console.
 { name, prepare, mount, toplevel, pool, keyDestination, rootMode, isoLabel
-, slotName, slotFile, niximilateInstall, netbootFace, isoFace, e2eRecord }:
+, slotFace, niximilateInstall, netbootFace, isoFace, e2eRecord }:
 
 { pkgs, lib, modulesPath, ... }:
 {
@@ -53,23 +53,25 @@
           e2e-record "installer: pool passphrase taken from the slot"
         fi
       }
-      slot=/dev/disk/by-partlabel/${slotName}
-      iso_slot=/iso${slotFile}
-      if [ -e "$slot" ]; then
-        mkdir -p /run/slot
-        if mount -o ro "$slot" /run/slot 2>/dev/null; then
-          deliver /run/slot
-          umount /run/slot
-        fi
-      elif [ -s "$iso_slot" ]; then
-        mkdir -p /run/slot
-        if mount -o ro,loop "$iso_slot" /run/slot 2>/dev/null; then
-          deliver /run/slot
-          umount /run/slot
-        fi
-      elif [ -d /run/initrd-slot ]; then
-        deliver /run/initrd-slot
-      fi
+      ${
+        if slotFace ? partlabel then ''
+          dev=/dev/disk/by-partlabel/${slotFace.partlabel}
+          mkdir -p /run/slot
+          if mount -o ro "$dev" /run/slot 2>/dev/null; then
+            deliver /run/slot
+            umount /run/slot
+          fi
+        '' else if slotFace ? path then ''
+          file=${slotFace.mount}${slotFace.path}
+          mkdir -p /run/slot
+          if mount -o ro,loop "$file" /run/slot 2>/dev/null; then
+            deliver /run/slot
+            umount /run/slot
+          fi
+        '' else ''
+          [ -d ${slotFace.dir} ] && deliver ${slotFace.dir}
+        ''
+      }
     '';
   };
 

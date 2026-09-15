@@ -7,7 +7,6 @@
 let
   fixture = import ../../blocks-poc/blocks/personalize/fixture.nix { inherit pkgs; };
   extract = import ../extract.nix;
-  slot = import ../../blocks-poc/slot.nix;
 
   evalHost = system: modules:
     import (pkgs.path + "/nixos/lib/eval-config.nix") {
@@ -103,11 +102,7 @@ let
       runtime = evalHost system ([
         ./modules/base.nix
         (import ./modules/e2e-result.nix { record = tools.e2eRecord; })
-        (import ./modules/marker.nix {
-          record = tools.e2eRecord;
-          slotName = slot.name;
-          slotFile = slot.file;
-        })
+        (import ./modules/marker.nix { record = tools.e2eRecord; })
         { networking.hostName = name; }
       ] ++ modules);
       # The real extendModules step: each live variant is the host plus a face module,

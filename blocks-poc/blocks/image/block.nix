@@ -153,7 +153,9 @@ in
         };
       };
 
-      slotFile = "/boot/${config.slot.name}.img";
+      # The iso slot's path from the one source, not restated — the same slotFace the
+      # installer reads and the marker gates against.
+      slotFile = (tools.slotFace { format = "iso"; inherit (config.slot) name; }).path;
 
       tree = netboot {
         inherit (config) name kernel initrd kernelParams;

@@ -1,9 +1,13 @@
-# The e2e witness: records onto the result disk (not the serial console) what a booted
-# system can PROVE — that userspace came up, that the nix DB is valid, what the slot holds,
-# what an install landed — then powers off so qemu exits on its own.
-# slotName / slotFile come from tools — the runtime read paths (partlabel, iso file) are
-# derived from the same source the image block built the slot from, not restated here.
-{ record, slotName, slotFile }:
+# The e2e witness: records onto the result disk what a booted system can PROVE — userspace
+# up, the nix DB valid, what the slot holds, what an install landed — then powers off so
+# qemu exits on its own.
+#
+# The slot locations here are RESTATED as literals ON PURPOSE — this is the gate. tools/
+# slot-face.nix is the one source the image and installer share; the marker independently
+# says where it EXPECTS the key, so if the image ever puts the slot somewhere else the boot
+# stops finding it and the e2e goes red. A marker that derived the path from slot-face would
+# only ever agree with itself.
+{ record }:
 { pkgs, ... }:
 {
   systemd.services.e2e-marker = {
@@ -30,14 +34,12 @@
         fi
       }
       mkdir -p /run/slot
-      slot=/dev/disk/by-partlabel/${slotName}
-      iso_slot=/iso${slotFile}
-      if [ -e "$slot" ]; then
-        if mount -o ro "$slot" /run/slot 2>/dev/null; then
+      if [ -e /dev/disk/by-partlabel/secrets ]; then
+        if mount -o ro /dev/disk/by-partlabel/secrets /run/slot 2>/dev/null; then
           report_slot
         fi
-      elif [ -e "$iso_slot" ]; then
-        if mount -o ro,loop "$iso_slot" /run/slot 2>/dev/null; then
+      elif [ -e /iso/boot/secrets.img ]; then
+        if mount -o ro,loop /iso/boot/secrets.img /run/slot 2>/dev/null; then
           report_slot
         fi
       elif [ -d /run/initrd-slot ]; then

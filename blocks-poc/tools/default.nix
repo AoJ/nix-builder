@@ -24,6 +24,9 @@ in
   roStore = import ./ro-store.nix { inherit pkgs; };
   netbootFace = import ./netboot-face.nix { inherit pkgs; };
   isoFace = import ./iso-face.nix { inherit pkgs; };
+  # Where a slot lives per format — the ONE source the image builds from and the installer
+  # reads from. (The marker restates it on purpose, to gate drift; see marker.nix.)
+  slotFace = import ./slot-face.nix;
 
   # Deterministic e2e capture: append a witness line to the vfat "result" disk the harness
   # attaches (stable virtio serial e2eout), instead of racing serial output that a fast

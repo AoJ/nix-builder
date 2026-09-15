@@ -10,7 +10,9 @@ let
   secrets = import ./blocks/secrets { inherit pkgs tools; };
   personalize = import ./blocks/personalize { inherit pkgs tools; };
 
-  slot = import ./slot.nix;
+  # The embedded slot: the composer names it and picks its size. Where it then LIVES per
+  # format is tools.slotFace; the image builds from it and the installer reads from it.
+  slot = { name = "secrets"; sizeMiB = 4; };
 
   formats = [ "iso" "raw" "qcow2" "kexec" "ipxe" ];
   liveFormats = [ "iso" "kexec" "ipxe" ];
@@ -98,14 +100,22 @@ let
   # `-iso-install` artifact name through the same ids tool the image block uses.
   isoInstallLabel = lib.toUpper (tools.ids.volumeId "${host.name}-iso-install:iso");
   installerFor = { rootMode, isoLabel ? null }:
+    let
+      # The installer reads its install-time key from its OWN slot, whose shape is the
+      # wrapper's format: a disk installer from a partition, an iso from the medium's file,
+      # a netboot from the initrd hand-over.
+      faceFormat =
+        if rootMode == "disk" then "raw"
+        else if isoLabel != null then "iso"
+        else "kexec";
+    in
     (install {
       inherit (host) name system;
       toplevel = host.variants.runtime.toplevel;
       closure = [ host.variants.runtime.toplevel ];
       inherit (host.install) prepare mount pool keyDestination;
       inherit rootMode isoLabel;
-      slotName = slot.name;
-      slotFile = slot.file;
+      slotFace = tools.slotFace { format = faceFormat; inherit (slot) name; };
     }).system;
 
   # Memoized per face as ATTRIBUTES, not calls: raw and qcow2 wrap the SAME installer, and

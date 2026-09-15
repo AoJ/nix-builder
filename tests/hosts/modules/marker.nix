@@ -6,9 +6,18 @@
   systemd.services.e2e-marker = {
     wantedBy = [ "multi-user.target" ];
     serviceConfig.Type = "oneshot";
-    path = [ pkgs.age pkgs.coreutils pkgs.util-linux pkgs.systemd ];
+    path = [ pkgs.age pkgs.coreutils pkgs.util-linux pkgs.systemd pkgs.nix ];
     script = ''
       echo "E2E-BOOT-OK $(cat /proc/sys/kernel/hostname)" > /dev/console
+
+      # The nix DB must be VALID, not merely present: walking the running system's closure
+      # reads it, and an empty DB (the register-nix-paths bug class — a load that silently
+      # did not run) fails here rather than only when something later runs nixos-install.
+      if nix-store -q --requisites /run/current-system > /dev/null 2>&1; then
+        echo "E2E-DB-OK" > /dev/console
+      else
+        echo "E2E-DB-BAD" > /dev/console
+      fi
       report_slot() {
         if [ -s /run/slot/sops.age ]; then
           echo "E2E-KEY $(age-keygen -y /run/slot/sops.age)" > /dev/console

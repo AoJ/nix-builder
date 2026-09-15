@@ -24,6 +24,7 @@ in
   extraDrives = "-drive if=virtio,format=raw,file=sidecar.img";
   expect = ''
     grep -q "E2E-BOOT-OK e2e-ext4" console.log
+    grep -q "E2E-DB-OK" console.log
     grep -q "E2E-KEY-EMPTY" console.log
     grep -q "E2E-SIDECAR $pub" console.log
   '';

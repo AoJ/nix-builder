@@ -18,8 +18,10 @@ in
   # clean export), consumed from its single source — no copy. The install block's installer
   # OS runs it; nothing reimplements the flow.
   niximilateInstall = import ../../../../lib/50_install/niximilateInstallApp.nix pkgs;
-  # The netboot runtime face, shared by the live variant and the memory-rooted installer:
-  # a nixos module is data, and the face belongs to whoever declares the read-only store.
-  netbootFace = ./netboot-face.nix;
-  isoFace = import ./iso-face.nix;
+  # The read-only store mechanism (overlay + register-nix-paths) and the two runtime faces
+  # built on it. A face is a nixos module, and the mechanism belongs to whoever declares the
+  # read-only store — so it lives here once and every consumer imports it.
+  roStore = import ./ro-store.nix { inherit pkgs; };
+  netbootFace = import ./netboot-face.nix { inherit pkgs; };
+  isoFace = import ./iso-face.nix { inherit pkgs; };
 }

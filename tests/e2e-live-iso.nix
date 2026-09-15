@@ -23,6 +23,7 @@ in
   '';
   expect = ''
     grep -q "E2E-BOOT-OK e2e-ext4" console.log
+    grep -q "E2E-DB-OK" console.log
     grep -q "E2E-KEY $pub" console.log
   '';
 };

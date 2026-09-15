@@ -104,9 +104,10 @@ let
         ./modules/marker.nix
         { networking.hostName = name; }
       ] ++ modules);
-      # The real extendModules step: the live variant is the host plus the live module,
-      # evaluated by the composer's side of the world — never inside a block.
-      live = runtime.extendModules { modules = [ ./modules/live.nix ]; };
+      # The real extendModules step: each live variant is the host plus a face module,
+      # evaluated by the composer's side of the world — never inside a block. There is one
+      # variant per live format; no generic "live" fallback, so a missing one is an eval
+      # error, not a silently wrong boot.
       liveNetboot = runtime.extendModules {
         modules = [ (import ./modules/live-netboot.nix { face = tools.netbootFace; }) ];
       };
@@ -115,7 +116,6 @@ let
       inherit name secrets system;
       variants = {
         runtime = extract runtime // { inherit storage; };
-        live = extract live;
         liveNetboot = extract liveNetboot;
         # The iso's runtime face needs the medium's LABEL, which only the composer knows —
         # so this variant is a function the composer applies.
@@ -137,6 +137,7 @@ in
   memory = mk {
     name = "e2e-memory";
     modules = [ (import ./modules/read-only-store.nix {
+      roStore = tools.roStore;
       device = "/dev/disk/by-partlabel/nixos";
     }) ];
     storage = "squashfs";

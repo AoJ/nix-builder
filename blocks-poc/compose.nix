@@ -21,10 +21,8 @@ let
   # the same name through the same ids tool, and the e2e boot tests the agreement.
   isoLabel = lib.toUpper (tools.ids.volumeId "${host.name}-iso:iso");
   variantFor = format:
-    if format == "iso" && host.variants ? liveIso then host.variants.liveIso isoLabel
-    else if builtins.elem format [ "kexec" "ipxe" ] && host.variants ? liveNetboot
-    then host.variants.liveNetboot
-    else if builtins.elem format liveFormats then host.variants.live
+    if format == "iso" then host.variants.liveIso isoLabel
+    else if format == "kexec" || format == "ipxe" then host.variants.liveNetboot
     else host.variants.runtime;
 
   extract = v: {

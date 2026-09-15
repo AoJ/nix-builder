@@ -54,6 +54,7 @@ in
     echo "boot qemu exited $sc" >&2
     if [ -e boot.log ]; then tail -n 30 boot.log >&2; fi
     grep -q "E2E-BOOT-OK e2e-zfs" boot.log
+    grep -q "E2E-DB-OK" boot.log
     pub="$(age-keygen -y ${fixture}/host.key)"
     grep -q "E2E-INSTALLED-KEY $pub" boot.log
 

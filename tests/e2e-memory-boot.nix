@@ -13,6 +13,7 @@ in
   image = (compose hosts.memory).image-raw.file;
   expect = ''
     grep -q "E2E-BOOT-OK e2e-memory" console.log
+    grep -q "E2E-DB-OK" console.log
   '';
 };
 }

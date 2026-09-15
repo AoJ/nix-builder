@@ -1,35 +1,21 @@
-# The read-only store, and the unit that belongs to it. A configuration that says
-# /nix/store is a squashfs does not work without the database load, the way a mount does
-# not work without a filesystem — so both halves live in ONE module, and the constant path
-# they agree on is nixpkgs' own (make-squashfs.nix writes it, netboot.nix reads it).
-{ device }:
-{ pkgs, ... }:
-{
-  fileSystems."/" = {
-    device = "none";
-    fsType = "tmpfs";
-    options = [ "mode=0755" ];
-  };
-  fileSystems."/nix/store" = {
+# The appliance's read-only store: a squashfs PARTITION as the lower layer, overlaid and
+# registered by the shared roStore tool. A tmpfs root completes the memory-rooted shape.
+# The mechanism belongs to whoever declares the read-only store — here, this module — and it
+# is the same one the netboot and iso faces use.
+{ roStore, device }:
+{ lib, config, ... }@args:
+lib.mkMerge [
+  (roStore args {
     inherit device;
     fsType = "squashfs";
     options = [ "ro" ];
-    neededForBoot = true;
-  };
-  # A SERVICE, not boot.postBootCommands: the systemd stage-2 init never runs the latter.
-  systemd.services.register-nix-paths = {
-    description = "Register Nix Store Paths";
-    unitConfig.DefaultDependencies = false;
-    wantedBy = [ "sysinit.target" ];
-    before = [ "sysinit.target" "shutdown.target" ];
-    after = [ "local-fs.target" ];
-    conflicts = [ "shutdown.target" ];
-    restartIfChanged = false;
-    serviceConfig = { Type = "oneshot"; RemainAfterExit = true; };
-    script = ''
-      if [ -e /nix/store/nix-path-registration ] && [ ! -e /nix/var/nix/db/db.sqlite ]; then
-        ${pkgs.nix}/bin/nix-store --load-db < /nix/store/nix-path-registration
-      fi
-    '';
-  };
-}
+    priority = null;  # the host's OWN runtime store — a live face overrides it at 60
+  })
+  {
+    fileSystems."/" = {
+      device = "none";
+      fsType = "tmpfs";
+      options = [ "mode=0755" ];
+    };
+  }
+]

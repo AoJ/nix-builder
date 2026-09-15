@@ -37,6 +37,7 @@ in
     fi
 
     grep -q "E2E-BOOT-OK e2e-ext4" console.log
+    grep -q "E2E-DB-OK" console.log
     pub="$(${pkgs.age}/bin/age-keygen -y ${fixture}/host.key)"
     grep -q "E2E-KEY $pub" console.log
     touch "$out"

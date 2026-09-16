@@ -395,13 +395,10 @@ the same personalize as everywhere else.
 
 Both storage shapes go through disko's own create/mount scripts, so the action reformats
 nothing it did not have to: a zfs pool is created by the install (L2), and an ext4 target is
-formatted the same way through the layout that also boots it. Both halves of that contract
-are e2e-proven, not assumed: a second installer run over an already-installed target must
-take the mount path — a canary planted on the disk between the runs survives byte-for-byte —
-and a wipe clears exactly the disks the host declared — a bystander disk with data rides
-through the destructive path and comes out byte-identical. The wipe enumerates a disk's
-partitions through the kernel, never by name pattern: this is the one command whose blast
-radius must be provably the named devices and nothing beside them.
+formatted the same way through the layout that also boots it. Two more invariants of the
+action: a second run over an already-installed target takes the mount path and formats
+nothing, and the wipe's blast radius is exactly the disks the host declared — the named
+devices and nothing beside them.
 
 **A disk wrapper roots two ways, and both are endpoints, because the choice is the
 operation's.** `#image-raw-install` / `#image-qcow2-install` are disk-rooted: the medium
@@ -669,9 +666,8 @@ the design, not the test author's taste.
 - **The eval gate is one host per attribute, and the gates run as separate processes** — the
   whole set in one evaluation does not fit a small machine, and a check that is green only where
   there is enough RAM is not a check.
-- **One entry point runs the whole suite** (`run-all.sh`), and it DISCOVERS its targets from
-  the attribute sets — a test that exists but nothing runs is the failure the runner exists
-  to prevent, and a new attribute cannot be forgotten by a runner that predates it.
+- **The suite has one entry point, and its target list is discovered, never maintained by
+  hand** — a test that exists but nothing runs is not a gate.
 
 ## Open
 
@@ -688,7 +684,7 @@ the design, not the test author's taste.
    the bound only bites where a copy really lands in tmpfs. The kernel is ours: the tmpfs size
    is tunable (e.g. 70%), which moves the boundary; the gate reads the real capacity either way.
 4. `action-install`'s EARLY capability gate: refuse up front what the target layout/host cannot
-   do, rather than failing mid-format. The running-system gate exists and is e2e-proven; the
+   do, rather than failing mid-format. The running-system gate exists; the
    remaining pre-flight checks (does the layout fit the disks that are actually there, does the
    carried closure fit the target) are the piece still to add — the closure bound is Open 3.
 5. The schema seam is data-only so far: `requires.secrets` → the files/keyTarget record, and

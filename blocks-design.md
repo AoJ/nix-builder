@@ -93,8 +93,9 @@ Derived:
 One prefix, the same set for every host; a host does not choose which endpoints it gets.
 
     runtime images   #image-iso   #image-raw   #image-qcow2   #image-kexec   #image-ipxe
-    install images   the same five with -install, and for the disk formats the in-place
-                     wrapper: #image-raw-install-inmemory   #image-qcow2-install-inmemory
+    install images   the same five with -install, and for the disk formats the
+                     memory-rooted wrapper: #image-raw-install-inmemory
+                     #image-qcow2-install-inmemory
     sidecars         #image-secrets-iso   #image-secrets-vfat   #image-secrets-json
     phase 2          #image-personalize
     store artifacts  #closure   #derivation             (the host as it runs)
@@ -340,6 +341,16 @@ which is this block's `keyDestination` input. The contract keeps them apart.
 
 **The install ACT is `action-install`, reached as a tool.** Its contract, in order:
 
+- **The running-system gate, before even the probe: no declared disk may carry the running
+  system.** A disk that still has mounts is the one the installer booted from — a
+  disk-rooted installer pointed at its own boot medium. This cannot be checked at eval (the
+  target may be named by an id nobody knows ahead, and which disk was booted from is a fact
+  of the machine), and the probe cannot be trusted to catch it — its mount path would mount
+  the installer's own root at `/mnt` and "find" a present target. A memory-rooted installer
+  holds no disk and passes vacuously, which is what keeps its any-disk freedom intact. The
+  wipe applies the same gate independently, for standalone callers. A refusal reports
+  `INSTALL-FAILED` and powers the machine off — a headless box must not sit wedged, and a
+  reboot must not masquerade as success.
 - **Probe first, and never reformat an installed target.** For zfs the probe is `zpool import`
   — the pool is the thing that persists; for a plain filesystem the probe is the mount script
   itself, which succeeds on an installed target and fails on a fresh disk. A present target is
@@ -380,17 +391,24 @@ the same personalize as everywhere else.
 
 Both storage shapes go through disko's own create/mount scripts, so the action reformats
 nothing it did not have to: a zfs pool is created by the install (L2), and an ext4 target is
-formatted the same way through the layout that also boots it.
+formatted the same way through the layout that also boots it. Both halves of that contract
+are e2e-proven, not assumed: a second installer run over an already-installed target must
+take the mount path — a canary planted on the disk between the runs survives byte-for-byte —
+and a wipe clears exactly the disks the host declared — a bystander disk with data rides
+through the destructive path and comes out byte-identical. The wipe enumerates a disk's
+partitions through the kernel, never by name pattern: this is the one command whose blast
+radius must be provably the named devices and nothing beside them.
 
 **A disk wrapper roots two ways, and both are endpoints, because the choice is the
 operation's.** `#image-raw-install` / `#image-qcow2-install` are disk-rooted: the medium
 carries the closure on its own partition, RAM-independently — for installing a DIFFERENT disk
 from a medium that persists (a usb stick into a physical server). `#image-raw-install-inmemory`
-/ `#image-qcow2-install-inmemory` are memory-rooted: the closure rides the initrd on the ESP,
-the booted installer holds no claim on the medium, and the disk it started from can be wiped
-and reinstalled in place — the one-disk machine, a cloud VM that cannot attach a second boot
-disk. The name marks the in-memory variant because for raw/qcow2 both wrappers ARE disks, so
-"disk" would distinguish nothing. Which endpoint an operation consumes is the host's call
+/ `#image-qcow2-install-inmemory` are memory-rooted: the closure rides the initrd on the ESP
+and the booted installer holds no claim on any disk — the target is whatever the host's
+layout names, an arbitrary disk, and the boot medium itself is NOT excluded. That last
+freedom is what the one-disk machine needs (a cloud VM that cannot attach a second boot
+disk), but it is a consequence, not the definition. The name marks the in-memory variant
+because for raw/qcow2 both wrappers ARE disks, so "disk" would distinguish nothing. Which endpoint an operation consumes is the host's call
 carried by deploy: the host declares what its machine can take, deploy reads the host and
 picks the endpoint — blocks always offer both, and neither is derivable here (the deciding
 facts, closure size against the machine's RAM and whether the medium is the main disk, are
@@ -663,8 +681,9 @@ the design, not the test author's taste.
    the bound only bites where a copy really lands in tmpfs. The kernel is ours: the tmpfs size
    is tunable (e.g. 70%), which moves the boundary; the gate reads the real capacity either way.
 4. `action-install`'s EARLY capability gate: refuse up front what the target layout/host cannot
-   do, rather than failing mid-format. The action is shape-aware (zfs / plain fs via disko) and
-   ext4 installs end to end; the pre-flight refusal is the piece still to add.
+   do, rather than failing mid-format. The running-system gate exists and is e2e-proven; the
+   remaining pre-flight checks (does the layout fit the disks that are actually there, does the
+   carried closure fit the target) are the piece still to add — the closure bound is Open 3.
 5. The schema seam is data-only so far: `requires.secrets` → the files/keyTarget record, and
    driving the composer's host records through the seam, remain for integration. Further
    changes are expected here (aoj), too early to describe.

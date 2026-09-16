@@ -63,8 +63,8 @@ in
       description = ''
         Where the store rides in a DISK format: its own partition (the disk stays the store
         medium), or inside the initrd on the ESP (the booted system lives fully in RAM and
-        the disk is free — what a self-reinstall needs). Required for raw/qcow2; null for
-        the formats whose placement is fixed by what they are.
+        holds no claim on any disk). Required for raw/qcow2; null for the formats whose
+        placement is fixed by what they are.
       '';
     };
 

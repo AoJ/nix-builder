@@ -16,10 +16,11 @@ let
   };
 
   rootModeFor = f: if builtins.elem f [ "iso" "kexec" "ipxe" ] then "memory" else "disk";
+  placementFor = f: if f == "raw" || f == "qcow2" then "partition" else null;
 
-  # THE MATRIX: every legal (format, store shape, slot) combination, each built and probed.
-  # The legal map is restated here ON PURPOSE — a test that derives its expectations from
-  # the block under test agrees with itself.
+  # THE MATRIX: every legal (format, store shape, slot, placement) combination, each built
+  # and probed. The legal map is restated here ON PURPOSE — a test that derives its
+  # expectations from the block under test agrees with itself.
   legal = {
     raw = [ "ext4" "squashfs" ];
     qcow2 = [ "ext4" "squashfs" ];
@@ -37,14 +38,31 @@ let
     format = f;
     storeShape = s;
     rootMode = rootModeFor f;
+    storePlacement = placementFor f;
+    inherit slot;
+  });
+  buildInitrd = f: slot: image (payload // {
+    name = caseName f "squashfs" slot + "-initrd";
+    format = f;
+    storeShape = "squashfs";
+    rootMode = "memory";
+    storePlacement = "initrd";
     inherit slot;
   });
   cases = lib.concatMap (f:
     lib.concatMap (s: map (slot: rec {
       format = f; shape = s; inherit slot;
+      placement = placementFor f;
       built = build f s slot;
       slotted = slot != null;
-    }) slots) legal.${f}) formats;
+    }) slots) legal.${f}) formats
+  # The initrd-carried disks: squashfs, memory-rooted, both disk envelopes, slot or none.
+  ++ lib.concatMap (f: map (slot: rec {
+      format = f; shape = "squashfs"; inherit slot;
+      placement = "initrd";
+      built = buildInitrd f slot;
+      slotted = slot != null;
+    }) slots) [ "raw" "qcow2" ];
 
   # Same builder, same inputs, a different derivation — so nix really builds it a second
   # time. Two builds of ONE derivation are the same store path, which is why a
@@ -53,9 +71,11 @@ let
 
   other = image (payload // {
     name = "other"; format = "raw"; storeShape = "ext4"; rootMode = "disk";
+    storePlacement = "partition";
   });
   otherIso = image (payload // {
     name = "other"; format = "iso"; storeShape = "squashfs"; rootMode = "memory";
+    storePlacement = null;
   });
 
   # An aarch64 artifact assembles NATIVELY: the tools are the runner's, the bootloader is
@@ -64,22 +84,34 @@ let
   asAarch64 = image (payload // {
     name = "fixture-aarch64"; system = "aarch64-linux";
     format = "raw"; storeShape = "ext4"; rootMode = "disk";
+    storePlacement = "partition";
   });
 
   # A wrong composition fails at eval, in image — not at boot on the machine. The sets are
-  # the COMPLEMENTS of the legal maps: every shape a format does not take, and every root
-  # mode it cannot boot.
+  # the COMPLEMENTS of the legal maps: every shape a format does not take, every root mode
+  # it cannot boot, and every placement the contract rules out.
   allShapes = [ "ext4" "squashfs" ];
-  refused = f: s: r:
+  refused = f: s: r: p:
     !(builtins.tryEval (image (payload // {
-      name = "bad"; format = f; storeShape = s; rootMode = r;
+      name = "bad"; format = f; storeShape = s; rootMode = r; storePlacement = p;
     })).file.outPath).success;
   refusals =
     lib.concatMap (f:
-      map (s: { inherit f s; ok = refused f s (rootModeFor f); })
+      map (s: { inherit f s; ok = refused f s (rootModeFor f) (placementFor f); })
         (lib.subtractLists legal.${f} allShapes)) formats
-    ++ map (f: { inherit f; r = "disk"; ok = refused f (builtins.head legal.${f}) "disk"; })
-      [ "iso" "kexec" "ipxe" ];
+    ++ map (f: { inherit f; r = "disk";
+                 ok = refused f (builtins.head legal.${f}) "disk" (placementFor f); })
+      [ "iso" "kexec" "ipxe" ]
+    # The placement rules: a disk format must state one, the fixed formats must not, and
+    # an initrd-carried store is squashfs and memory-rooted — each denial by itself.
+    ++ [
+      { why = "raw without a placement"; ok = refused "raw" "ext4" "disk" null; }
+      { why = "qcow2 without a placement"; ok = refused "qcow2" "ext4" "disk" null; }
+      { why = "iso told a placement"; ok = refused "iso" "squashfs" "memory" "partition"; }
+      { why = "kexec told a placement"; ok = refused "kexec" "squashfs" "memory" "initrd"; }
+      { why = "initrd store, ext4"; ok = refused "raw" "ext4" "memory" "initrd"; }
+      { why = "initrd store, disk-rooted"; ok = refused "raw" "squashfs" "disk" "initrd"; }
+    ];
 
   # Per-format probes. Each reads names and offsets OUT of the artifact (or its emitted
   # layout), never restating them.
@@ -92,6 +124,7 @@ let
       cmp converted.img ${(image (payload // {
         name = caseName "qcow2" c.shape c.slot;
         format = "raw"; storeShape = c.shape; rootMode = "disk"; slot = c.slot;
+        storePlacement = "partition";
       })).file}
     ''}
     sgdisk -p "$img" | grep -q ESP
@@ -153,8 +186,45 @@ let
     ''}
   '';
 
+  # The initrd-carried disk: nothing on it but the ESP (and the slot) — the store rides
+  # the initrd behind the bootloader, and the slot is the PARTITION, never a marker
+  # segment. Probed from the artifact: the ESP's initrd is the base initrd plus the
+  # squashfs cpio segment, extracted and listed.
+  initrdDiskChecks = c: ''
+    echo "== ${c.built.file.name}: ESP-only GPT, store in the initrd, slot ${
+      if c.slotted then "a partition" else "absent"} =="
+    img=${if c.format == "qcow2" then "converted.img" else c.built.file}
+    ${lib.optionalString (c.format == "qcow2") ''
+      qemu-img convert -f qcow2 -O raw ${c.built.file} converted.img
+      cmp converted.img ${(image (payload // {
+        name = caseName "qcow2" "squashfs" c.slot + "-initrd";
+        format = "raw"; storeShape = "squashfs"; rootMode = "memory";
+        storePlacement = "initrd"; slot = c.slot;
+      })).file}
+    ''}
+    sgdisk -p "$img" | grep -q ESP
+    ! sgdisk -p "$img" | grep -qw nixos
+    esp_off="$(jq -r '.[] | select(.label=="ESP") | .startByte' ${c.built.layout})"
+    mdir -i "$img"@@"$esp_off" -/ :: | grep -q nixos-initrd
+    mcopy -i "$img"@@"$esp_off" ::/nixos-initrd carried-initrd
+    n="$(stat -c%s ${payload.initrd})"
+    cmp -n "$n" carried-initrd ${payload.initrd}
+    tail -c +$(( n + 1 )) carried-initrd | cpio -t --quiet | grep -qx 'nix-store.squashfs'
+    rm -rf seg && mkdir seg
+    tail -c +$(( n + 1 )) carried-initrd | (cd seg && cpio -i --quiet 2>/dev/null)
+    unsquashfs -l seg/nix-store.squashfs | grep -q hello
+    ! grep -aqF -- '.slot-' carried-initrd
+    ${if c.slotted then ''
+      slot_off="$(jq -r '.[] | select(.label=="secrets") | .startByte' ${c.built.layout})"
+      [ "$(mdir -b -i "$img"@@"$slot_off" :: | wc -l)" = 0 ]
+    '' else ''
+      ! sgdisk -p "$img" | grep -q secrets
+    ''}
+  '';
+
   checksFor = c:
-    if c.format == "raw" || c.format == "qcow2" then diskChecks c
+    if c.placement == "initrd" then initrdDiskChecks c
+    else if c.format == "raw" || c.format == "qcow2" then diskChecks c
     else if c.format == "iso" then isoChecks c
     else netbootChecks c;
 

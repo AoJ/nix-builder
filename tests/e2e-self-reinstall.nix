@@ -1,10 +1,12 @@
-# The in-place install: the ext4-install host's #image-raw-install-inmemory — personalized
-# through its slot PARTITION — is dd'd onto the target disk, the machine's ONLY disk. The
-# booted installer lives fully in RAM (the closure rides the initrd on the ESP), so it holds
+# The in-place SCENARIO of #image-raw-install-inmemory (the endpoint installs any disk;
+# this exercises the one freedom only it has): the ext4-install host's image — personalized
+# through its slot PARTITION — is dd'd onto the target disk and the machine boots from it.
+# The installer lives fully in RAM (the closure rides the initrd on the ESP), so it holds
 # no claim on the medium: the mount probe finds no target, the wipe clears the very disk the
 # machine booted from — the installer image included — and disko formats it fresh. The disk
-# then boots the installed ext4 system alone. This is the one-disk cloud VM scenario, and
-# what the disk-rooted -install wrapper can never do.
+# then boots the installed ext4 system alone. A BYSTANDER disk with data rides along through
+# both phases and must come out byte-identical: the wipe clears exactly the disks the host
+# declared, nothing else.
 { pkgs, compose, hosts }:
 
 let
@@ -38,13 +40,25 @@ in
     for r in a b; do truncate -s 16M result-$r.img; mkfs.fat -n E2EOUT result-$r.img > /dev/null; done
     install -m 0644 ${pkgs.OVMF.fd}/FV/OVMF_VARS.fd vars.fd
 
+    truncate -s 64M bystander.img
+    mkfs.fat -n KEEPME bystander.img > /dev/null
+    echo "do not touch" > keepme
+    mcopy -i bystander.img keepme ::/keepme
+    cp bystander.img bystander.orig
+
     echo "== phase A: boots from the disk, wipes it, reinstalls it =="
+    # 6G: on the UEFI path the 1.3G initrd (the carried closure) sits in firmware memory
+    # TWICE before the kernel runs — systemd-boot's read buffer plus the EFI stub's copy —
+    # so boot needs ~2x the compressed closure or the firmware refuses with Out of
+    # Resources (the kexec e2es escape this: qemu -initrd loads it once).
     sc=0
-    timeout 1500 qemu-system-x86_64 -enable-kvm -cpu host -m 3072 -smp 2 \
+    timeout 1500 qemu-system-x86_64 -enable-kvm -cpu host -m 6144 -smp 2 \
       -drive if=pflash,format=raw,readonly=on,file=${pkgs.OVMF.fd}/FV/OVMF_CODE.fd \
       -drive if=pflash,format=raw,file=vars.fd \
       -drive if=none,id=target,format=raw,file=target.img \
       -device virtio-blk-pci,drive=target,serial=target \
+      -drive if=none,id=bystander,format=raw,file=bystander.img \
+      -device virtio-blk-pci,drive=bystander,serial=bystander \
       -drive if=none,id=eout,format=raw,file=result-a.img \
       -device virtio-blk-pci,drive=eout,serial=e2eout \
       -serial file:install.log -display none -no-reboot || sc=$?
@@ -62,6 +76,8 @@ in
       -drive if=pflash,format=raw,file=vars2.fd \
       -drive if=none,id=target,format=raw,file=target.img \
       -device virtio-blk-pci,drive=target,serial=target \
+      -drive if=none,id=bystander,format=raw,file=bystander.img \
+      -device virtio-blk-pci,drive=bystander,serial=bystander \
       -drive if=none,id=eout,format=raw,file=result-b.img \
       -device virtio-blk-pci,drive=eout,serial=e2eout \
       -serial file:boot.log -display none -no-reboot || sc=$?
@@ -72,6 +88,9 @@ in
     grep -q "E2E-DB-OK" result-b
     pub="$(age-keygen -y ${fixture}/host.key)"
     grep -q "E2E-INSTALLED-KEY $pub" result-b
+
+    echo "== the bystander disk came through the wipe byte-identical =="
+    cmp bystander.img bystander.orig
 
     touch "$out"
   ''

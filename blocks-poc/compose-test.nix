@@ -9,6 +9,7 @@ let
   host = {
     name = "demo";
     system = "x86_64-linux";
+    slotName = "secrets";
     variants = {
       runtime = {
         toplevel = pkgs.writeText "demo-toplevel" "the host as it runs";
@@ -53,6 +54,8 @@ let
       mount = pkgs.writeShellScript "mount" "mount /dev/target-root \"$1\"";
       pool = "rpool";
       keyDestination = "/var/lib/sops/age.key";
+      disks = [ "/dev/target" ];
+      report = null;
     };
   };
 
@@ -64,6 +67,12 @@ let
   zfsHost = host // {
     variants = host.variants // {
       runtime = host.variants.runtime // { storage = "zfs"; };
+    };
+  };
+
+  squashfsHost = host // {
+    variants = host.variants // {
+      runtime = host.variants.runtime // { storage = "squashfs"; rootMode = "memory"; };
     };
   };
 
@@ -89,6 +98,14 @@ assert lib.assertMsg (!refusedEndpoint host "image-kexec-install")
   "the memory-rooted installer exists: the kexec wrapper evaluates";
 assert lib.assertMsg (!refusedEndpoint host "image-iso-install")
   "the iso-rooted installer exists: the iso wrapper evaluates";
+assert lib.assertMsg (!refusedEndpoint host "image-raw-install-inmemory")
+  "the memory-rooted disk wrapper exists: -install-inmemory evaluates";
+assert lib.assertMsg (refusedEndpoint squashfsHost "image-raw-install")
+  "L6: a squashfs host's install endpoints are holes the composer names at eval";
+assert lib.assertMsg (refusedEndpoint squashfsHost "image-raw-install-inmemory")
+  "L6 covers the inmemory wrapper the same way";
+assert lib.assertMsg (!refusedEndpoint squashfsHost "image-raw")
+  "L6 costs nothing on the runtime half: the squashfs host's image is the deliverable";
 
 pkgs.runCommand "test-compose"
   { nativeBuildInputs = [
@@ -102,6 +119,14 @@ pkgs.runCommand "test-compose"
     sgdisk -p ${e.image-raw.file} | grep -q secrets
     xorriso -indev ${e.image-iso.file} -find ${e.image-iso.slot.path} 2>/dev/null \
       | grep -q secrets
+
+    echo "== -install-inmemory: nothing on the disk but the ESP and the slot =="
+    sgdisk -p ${e.image-raw-install-inmemory.file} | grep -q ESP
+    sgdisk -p ${e.image-raw-install-inmemory.file} | grep -q secrets
+    ! sgdisk -p ${e.image-raw-install-inmemory.file} | grep -qw nixos
+    inm_esp="$(jq -r '.[] | select(.label=="ESP") | .startByte' \
+      ${e.image-raw-install-inmemory.layout})"
+    mdir -i ${e.image-raw-install-inmemory.file}@@"$inm_esp" -/ :: | grep -q nixos-initrd
 
     echo "== the -install pipe: the same format, the artifact carries the host's closure =="
     root_off="$(jq -r '.[] | select(.label=="nixos") | .startByte' ${e.image-raw-install.layout})"

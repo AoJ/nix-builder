@@ -23,6 +23,18 @@ disks=("$@")
 required create mounts toplevel key_dest storage
 [ "$storage" != zfs ] || required pool
 
+# EARLY GATE, before the probe: no declared disk may carry the RUNNING system. A disk with
+# mounts here is the one we booted from — a disk-rooted installer pointed at its own boot
+# medium. The probe cannot be trusted to catch it: its mount path would happily mount the
+# installer's own root at /mnt and install into the running system. A memory-rooted
+# installer holds no disk and passes vacuously.
+for disk in "${disks[@]}"; do
+  [ -e "$disk" ] || continue
+  if lsblk -rno MOUNTPOINTS "$(readlink -f "$disk")" | grep -q .; then
+    fatal "declared disk $disk carries the running system — refusing to install over it"
+  fi
+done
+
 wipe_and_create() {
   info "$storage target absent -> wiping ${disks[*]} and creating (this formats the disks)"
   run "wipe ${disks[*]}" action-wipe "${disks[@]}"

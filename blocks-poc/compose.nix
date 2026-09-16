@@ -124,8 +124,8 @@ let
     disk = installerFor { rootMode = "disk"; faceFormat = "raw"; isoLabel = null; };
     memory = installerFor { rootMode = "memory"; faceFormat = "kexec"; isoLabel = null; };
     iso = installerFor { rootMode = "memory"; faceFormat = "iso"; isoLabel = isoInstallLabel; };
-    # The in-place installer: memory-rooted like the netboot one, but its slot is the disk
-    # wrapper's partition — read before the action wipes the medium it booted from.
+    # Memory-rooted like the netboot one, but its slot is the disk wrapper's partition —
+    # read at boot, so the action may later wipe ANY disk, the boot medium included.
     rawMemory = installerFor { rootMode = "memory"; faceFormat = "raw"; isoLabel = null; };
   };
 
@@ -150,9 +150,10 @@ let
   }) formats);
 
   # The memory-rooted wrapper for the disk formats: the closure rides the initrd on the
-  # ESP, the booted installer holds no claim on the medium — the in-place (self-reinstall)
-  # artifact. The unmarked -install stays disk-rooted, for installing a DIFFERENT disk from
-  # a medium that persists and carries the closure RAM-independently.
+  # ESP, so the booted installer holds no claim on any disk — the target is whatever the
+  # host's layout names, the boot medium NOT excluded. The unmarked -install stays
+  # disk-rooted: the medium carries the closure RAM-independently, and can only ever
+  # install a different disk.
   inmemoryInstallEndpoints = lib.listToAttrs (map (f: {
     name = "image-${f}-install-inmemory";
     value = guardL6 f

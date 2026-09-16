@@ -98,11 +98,18 @@ in
       StandardError = "journal+console";
     };
     path = [ actionInstall pkgs.systemd ];
+    # A refused or failed install must terminate the machine, visibly: a report line and a
+    # poweroff, so a headless box does not sit wedged and a reboot cannot masquerade as
+    # success.
     script = ''
       set -euo pipefail
       ${reportFn}
-      action-install ${lib.escapeShellArgs
-        ([ prepare mount toplevel keyDestination storage pool ] ++ disks)}
+      if ! action-install ${lib.escapeShellArgs
+        ([ prepare mount toplevel keyDestination storage pool ] ++ disks)}; then
+        report_line "INSTALL-FAILED ${name}"
+        systemctl poweroff
+        exit 1
+      fi
       report_line "INSTALL-OK ${name}"
       systemctl reboot
     '';

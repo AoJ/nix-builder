@@ -7,7 +7,7 @@ let
 
   # Assembled BY HAND: the extracted values, not a configuration.
   target = pkgs.writeText "target-toplevel" "the system being installed";
-  handed = install {
+  base = {
     name = "fixture";
     system = "x86_64-linux";
     toplevel = target;
@@ -17,8 +17,13 @@ let
     pool = "rpool";
     storage = "zfs";
     keyDestination = "/var/lib/sops/age.key";
+    disks = [ "/dev/target" ];
+    report = null;
     slotFace = tools.slotFace { format = "raw"; name = "secrets"; };
   };
+  handed = install base;
+
+  refused = args: !(builtins.tryEval (install (base // args)).system.toplevel.drvPath).success;
 
   # The pipe: image(install(host)) — the format does not know it is packing an installer.
   packed = image ({
@@ -26,19 +31,24 @@ let
     format = "raw";
     system = "x86_64-linux";
     storeShape = "ext4";
+    storePlacement = "partition";
   } // handed.system);
 in
 
 assert lib.assertMsg (builtins.elem target handed.system.storePaths)
   "the installer must CARRY the system it installs — offline is the point";
 assert lib.assertMsg
-  ((install {
-    name = "fixture"; system = "x86_64-linux"; toplevel = target; closure = [ target ];
-    prepare = pkgs.writeShellScript "p" ":"; mount = pkgs.writeShellScript "m" ":";
-    pool = "rpool"; storage = "zfs"; keyDestination = "/k"; rootMode = "memory";
+  ((install (base // {
+    rootMode = "memory";
     slotFace = tools.slotFace { format = "kexec"; name = "secrets"; };
-  }).system.rootMode == "memory")
+  })).system.rootMode == "memory")
   "the memory-rooted installer exists and declares itself";
+assert lib.assertMsg (refused { disks = [ ]; })
+  "an install with no disks to wipe must be refused, not left to format blind";
+assert lib.assertMsg (refused { storage = "squashfs"; })
+  "storage outside the installable set must be refused at eval";
+assert lib.assertMsg (refused { rootMode = "self-hosting"; })
+  "an unknown root mode must be refused at eval";
 
 pkgs.runCommand "test-install"
   { nativeBuildInputs = [ pkgs.gptfdisk pkgs.e2fsprogs pkgs.jq pkgs.coreutils pkgs.gnugrep ]; }
@@ -54,6 +64,8 @@ pkgs.runCommand "test-install"
     grep -q 'rpool' "$starter"
     grep -q '/var/lib/sops/age.key' "$starter"
     grep -q ${target} "$starter"
+    grep -q '/dev/target' "$starter"
+    grep -q 'INSTALL-OK fixture' "$starter"
 
     echo "== the installer's own slot feeds the install-time key to the action =="
     [ -e ${handed.system.toplevel}/etc/systemd/system/slot-key.service ]

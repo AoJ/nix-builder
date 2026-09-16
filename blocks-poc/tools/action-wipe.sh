@@ -19,14 +19,26 @@ if command -v mdadm > /dev/null 2>&1; then
   best_effort "stop md arrays" mdadm --stop --scan
 fi
 
+# THE GATE, after the holder release and before the first destructive byte: a disk that
+# still has mounts now is the one the running system lives on — refuse it. Standalone
+# callers get the same protection action-install applies up front.
+for disk in "$@"; do
+  [ -e "$disk" ] || continue
+  if lsblk -rno MOUNTPOINTS "$(readlink -f "$disk")" | grep -q .; then
+    fatal "$disk carries the running system — refusing to wipe it"
+  fi
+done
+
 for disk in "$@"; do
   if [ ! -e "$disk" ]; then
     info "wipe: $disk absent -> skipping"
     continue
   fi
   info "wipe: clearing $disk"
-  for part in "$disk"?*; do
-    [ -e "$part" ] || continue
+  # Enumerate the disk's OWN partitions via the kernel, never a name glob: /dev/sda?*
+  # also matches /dev/sdaa — a different disk, and this must clear exactly the named ones.
+  mapfile -t parts < <(lsblk -npo PATH "$(readlink -f "$disk")" | tail -n +2)
+  for part in "${parts[@]}"; do
     best_effort "wipefs $part" wipefs -af "$part"
   done
   if ! blkdiscard -f "$disk" 2> /dev/null; then

@@ -18,21 +18,26 @@ let
 
   slotted = image (payload // {
     name = "fixture"; format = "raw"; storeShape = "ext4"; rootMode = "disk";
+    storePlacement = "partition";
     slot = { name = "secrets"; sizeMiB = 4; };
   });
   bare = image (payload // {
     name = "fixture"; format = "raw"; storeShape = "ext4"; rootMode = "disk";
+    storePlacement = "partition";
   });
   slottedIso = image (payload // {
     name = "fixture"; format = "iso"; storeShape = "squashfs"; rootMode = "memory";
+    storePlacement = null;
     slot = { name = "secrets"; sizeMiB = 4; };
   });
   tree = image (payload // {
     name = "fixture"; format = "kexec"; storeShape = "squashfs"; rootMode = "memory";
+    storePlacement = null;
     slot = { name = "secrets"; sizeMiB = 4; };
   });
   bareTree = image (payload // {
     name = "fixture"; format = "kexec"; storeShape = "squashfs"; rootMode = "memory";
+    storePlacement = null;
   });
 
   # The throwaway key IS the planted file, so the whole chain is real: the runner derives

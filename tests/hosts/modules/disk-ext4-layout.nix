@@ -24,8 +24,11 @@
         };
         ${slotName} = {
           # The slot the layout provides: formatted vfat, no mountpoint — phase 2 writes it,
-          # the running system mounts it on demand (the slot's runtime face).
+          # the running system mounts it on demand (the slot's runtime face). The label is
+          # load-bearing: disko's default GPT name is disk-<disk>-<partition>, and the slot
+          # contract is the partition NAMED ${slotName}, found by that name.
           size = "8M";
+          label = slotName;
           content = { type = "filesystem"; format = "vfat"; };
         };
       };

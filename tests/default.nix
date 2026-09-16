@@ -25,6 +25,8 @@ let
     iso-install = import ./e2e-iso-install.nix { inherit pkgs compose hosts; };
     ext4-install = import ./e2e-ext4-install.nix { inherit pkgs compose hosts; };
     self-reinstall = import ./e2e-self-reinstall.nix { inherit pkgs compose hosts; };
+    never-reformat = import ./e2e-never-reformat.nix { inherit pkgs compose hosts; };
+    install-gate = import ./e2e-install-gate.nix { inherit pkgs compose hosts; };
   };
 
   coverage = import ./coverage.nix {

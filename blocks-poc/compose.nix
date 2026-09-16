@@ -49,6 +49,11 @@ let
     qcow2 = diskShape;
   }.${format};
 
+  # Disk formats carry their store in a partition unless an endpoint says otherwise; the
+  # other formats fix their own placement and take none.
+  placementFor = format:
+    if format == "raw" || format == "qcow2" then "partition" else null;
+
   # The installer is an OS of its own; its store and root mode are the WRAPPER's, so the
   # target's storage never shapes them and the L2 hole does not exist on the -install half.
   installerShapeFor = format: {
@@ -78,12 +83,13 @@ let
     then { inherit (slot) name; sizeMiB = 4; }
     else null;
 
-  imageFor = format: shape: rootMode: system: nameSuffix:
+  imageFor = format: shape: rootMode: system: nameSuffix: placement:
     image ({
       name = "${host.name}-${format}${nameSuffix}";
       inherit format;
       inherit (host) system;
       storeShape = shape;
+      storePlacement = placement;
       slot = slotFor format;
     } // extract system // { inherit rootMode; });
 
@@ -91,23 +97,17 @@ let
     name = "image-${f}";
     value =
       let v = variantFor f;
-      in imageFor f (storeShapeFor f) v.rootMode v "";
+      in imageFor f (storeShapeFor f) v.rootMode v "" (placementFor f);
   }) formats);
 
   # What gets installed is ALWAYS the host as it runs; the format only shapes the wrapper.
   # The iso wrapper's installer wears the iso face, keyed by the label derived from the
   # `-iso-install` artifact name through the same ids tool the image block uses.
   isoInstallLabel = lib.toUpper (tools.ids.volumeId "${host.name}-iso-install:iso");
-  installerFor = { rootMode, isoLabel ? null }:
-    let
-      # The installer reads its install-time key from its OWN slot, whose shape is the
-      # wrapper's format: a disk installer from a partition, an iso from the medium's file,
-      # a netboot from the initrd hand-over.
-      faceFormat =
-        if rootMode == "disk" then "raw"
-        else if isoLabel != null then "iso"
-        else "kexec";
-    in
+  # The installer reads its install-time key from its OWN slot, whose shape is the
+  # WRAPPER's: a disk wrapper from a partition (whichever way the installer roots), an iso
+  # from the medium's file, a netboot from the initrd hand-over.
+  installerFor = { rootMode, faceFormat, isoLabel }:
     (install {
       inherit (host) name system;
       toplevel = host.variants.runtime.toplevel;
@@ -121,27 +121,43 @@ let
   # Memoized per face as ATTRIBUTES, not calls: raw and qcow2 wrap the SAME installer, and
   # a repeated installerFor call is a second full eval-config of an identical system.
   installers = {
-    disk = installerFor { rootMode = "disk"; };
-    memory = installerFor { rootMode = "memory"; };
-    iso = installerFor { rootMode = "memory"; isoLabel = isoInstallLabel; };
+    disk = installerFor { rootMode = "disk"; faceFormat = "raw"; isoLabel = null; };
+    memory = installerFor { rootMode = "memory"; faceFormat = "kexec"; isoLabel = null; };
+    iso = installerFor { rootMode = "memory"; faceFormat = "iso"; isoLabel = isoInstallLabel; };
+    # The in-place installer: memory-rooted like the netboot one, but its slot is the disk
+    # wrapper's partition — read before the action wipes the medium it booted from.
+    rawMemory = installerFor { rootMode = "memory"; faceFormat = "raw"; isoLabel = null; };
   };
 
   # L6 mirrors L2: a squashfs store is written by the image, never by an install —
   # nixos-install populates a filesystem, and a squashfs is generated from one.
+  guardL6 = f: v:
+    if host.variants.runtime.storage == "squashfs"
+    then throw ("unsupported (L6): a squashfs store is written by the image, never by an"
+      + " install — deploy #image-${f} itself")
+    else v;
+
   installEndpoints = lib.listToAttrs (map (f: {
     name = "image-${f}-install";
-    value =
-      if host.variants.runtime.storage == "squashfs"
-      then throw ("unsupported (L6): a squashfs store is written by the image, never by an"
-        + " install — deploy #image-${f} itself")
-      else
-        let
-          installer =
-            if f == "iso" then installers.iso
-            else installers.${installerRootModeFor f};
-        in
-        imageFor f (installerShapeFor f) installer.rootMode installer "-install";
+    value = guardL6 f (
+      let
+        installer =
+          if f == "iso" then installers.iso
+          else installers.${installerRootModeFor f};
+      in
+      imageFor f (installerShapeFor f) installer.rootMode installer "-install"
+        (placementFor f));
   }) formats);
+
+  # The memory-rooted wrapper for the disk formats: the closure rides the initrd on the
+  # ESP, the booted installer holds no claim on the medium — the in-place (self-reinstall)
+  # artifact. The unmarked -install stays disk-rooted, for installing a DIFFERENT disk from
+  # a medium that persists and carries the closure RAM-independently.
+  inmemoryInstallEndpoints = lib.listToAttrs (map (f: {
+    name = "image-${f}-install-inmemory";
+    value = guardL6 f
+      (imageFor f "squashfs" "memory" installers.rawMemory "-install-inmemory" "initrd");
+  }) [ "raw" "qcow2" ]);
 
   sidecarFiles = map (f: { inherit (f) target; source = f.runtimeSource; }) host.secrets.files;
 
@@ -168,7 +184,7 @@ let
     };
 in
 
-runtimeEndpoints // installEndpoints // {
+runtimeEndpoints // installEndpoints // inmemoryInstallEndpoints // {
   image-secrets-vfat = secrets {
     inherit (host) name;
     files = sidecarFiles;

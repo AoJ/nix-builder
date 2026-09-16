@@ -93,7 +93,8 @@ Derived:
 One prefix, the same set for every host; a host does not choose which endpoints it gets.
 
     runtime images   #image-iso   #image-raw   #image-qcow2   #image-kexec   #image-ipxe
-    install images   the same five with -install
+    install images   the same five with -install, and for the disk formats the in-place
+                     wrapper: #image-raw-install-inmemory   #image-qcow2-install-inmemory
     sidecars         #image-secrets-iso   #image-secrets-vfat   #image-secrets-json
     phase 2          #image-personalize
     store artifacts  #closure   #derivation             (the host as it runs)
@@ -163,6 +164,7 @@ What the endpoints map to:
 |---|---|
 | `#image-<format>` | `image(host, format)` |
 | `#image-<format>-install` | `image(install(host), format)` |
+| `#image-<format>-install-inmemory` | the same, with the wrapper memory-rooted (disk formats only) |
 | `#image-secrets-<format>` | `secrets(…, sidecarFormat)` |
 | `#image-personalize` | `personalize(artifact, slot, files)` |
 | `#closure` / `#derivation` | the host's toplevel, named |
@@ -306,6 +308,13 @@ itself carries the squashfs store and the slot file. `kexec` / `ipxe` are one tr
 caller's initrd with the squashfs store appended as a cpio segment at the nixpkgs name
 (`/nix-store.squashfs` — DECIDED: compressed and lazily read), and both loader descriptors.
 
+For the disk formats the composer additionally states WHERE the store rides
+(`storePlacement`): in its own partition — the disk stays the store medium — or inside the
+initrd on the ESP, the netboot payload behind a bootloader, in which case the disk carries
+nothing but the ESP and the slot partition and the booted system holds no claim on the medium
+it started from. An initrd-carried store is squashfs and memory-rooted by validation; the
+other formats fix their own placement and refuse to be told one.
+
 ## install
 
 Wraps a host in an OS that unpacks it. Its output is a system, so it sits **before** `image`,
@@ -372,6 +381,21 @@ the same personalize as everywhere else.
 Both storage shapes go through disko's own create/mount scripts, so the action reformats
 nothing it did not have to: a zfs pool is created by the install (L2), and an ext4 target is
 formatted the same way through the layout that also boots it.
+
+**A disk wrapper roots two ways, and both are endpoints, because the choice is the
+operation's.** `#image-raw-install` / `#image-qcow2-install` are disk-rooted: the medium
+carries the closure on its own partition, RAM-independently — for installing a DIFFERENT disk
+from a medium that persists (a usb stick into a physical server). `#image-raw-install-inmemory`
+/ `#image-qcow2-install-inmemory` are memory-rooted: the closure rides the initrd on the ESP,
+the booted installer holds no claim on the medium, and the disk it started from can be wiped
+and reinstalled in place — the one-disk machine, a cloud VM that cannot attach a second boot
+disk. The name marks the in-memory variant because for raw/qcow2 both wrappers ARE disks, so
+"disk" would distinguish nothing. Which endpoint an operation consumes is the host's call
+carried by deploy: the host declares what its machine can take, deploy reads the host and
+picks the endpoint — blocks always offer both, and neither is derivable here (the deciding
+facts, closure size against the machine's RAM and whether the medium is the main disk, are
+not eval facts). The installer's root mode is the WRAPPER's property, never the host's
+`runtime.mode`, which shapes only the system being installed.
 
 ## store — a tool, inside image
 

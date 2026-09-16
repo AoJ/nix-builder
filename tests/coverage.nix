@@ -18,6 +18,7 @@ let
     "image-iso" "image-raw" "image-qcow2" "image-kexec" "image-ipxe"
     "image-iso-install" "image-raw-install" "image-qcow2-install"
     "image-kexec-install" "image-ipxe-install"
+    "image-raw-install-inmemory" "image-qcow2-install-inmemory"
     "image-secrets-vfat" "image-secrets-iso" "image-secrets-json"
     "image-personalize" "image-personalize-iso" "image-personalize-kexec"
     "closure" "closure-live"
@@ -30,6 +31,7 @@ let
   installEndpoints = [
     "image-iso-install" "image-raw-install" "image-qcow2-install"
     "image-kexec-install" "image-ipxe-install"
+    "image-raw-install-inmemory" "image-qcow2-install-inmemory"
   ];
   lawHoles = {
     ext4 = [ ];
@@ -53,6 +55,8 @@ let
       image-iso-install = "eval-only";
       image-kexec-install = "eval-only";
       image-ipxe-install = "eval-only";
+      image-raw-install-inmemory = "eval-only";
+      image-qcow2-install-inmemory = "eval-only";
       image-secrets-vfat = "booted";
       image-secrets-iso = "eval-only";
       image-secrets-json = "eval-only";
@@ -73,6 +77,8 @@ let
       image-iso-install = "hole";
       image-kexec-install = "hole";
       image-ipxe-install = "hole";
+      image-raw-install-inmemory = "hole";
+      image-qcow2-install-inmemory = "hole";
       image-secrets-vfat = "eval-only";
       image-secrets-iso = "eval-only";
       image-secrets-json = "eval-only";
@@ -93,6 +99,8 @@ let
       image-iso-install = "booted";
       image-kexec-install = "booted";
       image-ipxe-install = "eval-only";
+      image-raw-install-inmemory = "eval-only";
+      image-qcow2-install-inmemory = "eval-only";
       image-secrets-vfat = "eval-only";
       image-secrets-iso = "eval-only";
       image-secrets-json = "eval-only";
@@ -113,6 +121,8 @@ let
       image-iso-install = "eval-only";
       image-kexec-install = "booted";
       image-ipxe-install = "eval-only";
+      image-raw-install-inmemory = "eval-only";
+      image-qcow2-install-inmemory = "eval-only";
       image-secrets-vfat = "eval-only";
       image-secrets-iso = "eval-only";
       image-secrets-json = "eval-only";
@@ -133,6 +143,8 @@ let
       image-iso-install = "eval-only";
       image-kexec-install = "eval-only";
       image-ipxe-install = "eval-only";
+      image-raw-install-inmemory = "eval-only";
+      image-qcow2-install-inmemory = "eval-only";
       image-secrets-vfat = "eval-only";
       image-secrets-iso = "eval-only";
       image-secrets-json = "eval-only";
@@ -153,6 +165,8 @@ let
       image-iso-install = "eval-only";
       image-kexec-install = "eval-only";
       image-ipxe-install = "eval-only";
+      image-raw-install-inmemory = "eval-only";
+      image-qcow2-install-inmemory = "eval-only";
       image-secrets-vfat = "eval-only";
       image-secrets-iso = "eval-only";
       image-secrets-json = "eval-only";
@@ -173,10 +187,12 @@ let
       image-iso-install = "eval-only";
       image-kexec-install = "booted";
       image-ipxe-install = "eval-only";
+      image-raw-install-inmemory = "booted";
+      image-qcow2-install-inmemory = "eval-only";
       image-secrets-vfat = "eval-only";
       image-secrets-iso = "eval-only";
       image-secrets-json = "eval-only";
-      image-personalize = "eval-only";
+      image-personalize = "booted";
       image-personalize-iso = "eval-only";
       image-personalize-kexec = "booted";
       closure = "booted";

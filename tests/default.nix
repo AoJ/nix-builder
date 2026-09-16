@@ -24,6 +24,7 @@ let
     install-encrypted = import ./e2e-install-encrypted.nix { inherit pkgs compose hosts; };
     iso-install = import ./e2e-iso-install.nix { inherit pkgs compose hosts; };
     ext4-install = import ./e2e-ext4-install.nix { inherit pkgs compose hosts; };
+    self-reinstall = import ./e2e-self-reinstall.nix { inherit pkgs compose hosts; };
   };
 
   coverage = import ./coverage.nix {

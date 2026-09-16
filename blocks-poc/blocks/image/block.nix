@@ -58,6 +58,16 @@ in
       description = "Picked by the composer, which knows the format it is asking for; validated here.";
     };
 
+    storePlacement = mkOption {
+      type = types.nullOr (types.enum [ "partition" "initrd" ]);
+      description = ''
+        Where the store rides in a DISK format: its own partition (the disk stays the store
+        medium), or inside the initrd on the ESP (the booted system lives fully in RAM and
+        the disk is free — what a self-reinstall needs). Required for raw/qcow2; null for
+        the formats whose placement is fixed by what they are.
+      '';
+    };
+
     slot = mkOption {
       type = types.nullOr (types.submodule {
         options = {
@@ -106,12 +116,24 @@ in
         kexec = [ "memory" ];
         ipxe = [ "memory" ];
       };
+      diskFormat = config.format == "raw" || config.format == "qcow2";
+      placement =
+        if diskFormat && config.storePlacement == null
+        then throw "image ${config.name}: ${config.format} must state where the store rides (storePlacement)"
+        else if !diskFormat && config.storePlacement != null
+        then throw "image ${config.name}: ${config.format} fixes its store placement — do not state one"
+        else if config.storePlacement == "initrd"
+          && (config.storeShape != "squashfs" || config.rootMode != "memory")
+        then throw "image ${config.name}: an initrd-carried store is squashfs and memory-rooted"
+        else config.storePlacement;
+      # seq: the placement check must fire for EVERY format, including the ones whose
+      # assembly never reads the placement.
       shape =
         if !builtins.elem config.storeShape legal.${config.format}
         then throw "image ${config.name}: a ${config.storeShape} store cannot ride in ${config.format}"
         else if !builtins.elem config.rootMode legalRoot.${config.format}
         then throw "image ${config.name}: a ${config.rootMode}-rooted system cannot boot from ${config.format}"
-        else config.storeShape;
+        else builtins.seq placement config.storeShape;
 
       store = tools.store {
         inherit (config) name;
@@ -163,17 +185,48 @@ in
         slotName = if config.slot == null then null else config.slot.name;
       };
 
+      # The initrd-carried disk: the netboot payload behind an ESP. Nothing but the ESP and
+      # the slot is on the disk — the store rides the initrd, so the booted system holds no
+      # claim on the medium it started from. The slot is the partition (personalize's raw
+      # path), so the tree carries no marker segment.
+      treeInmemory = netboot {
+        inherit (config) name kernel initrd kernelParams;
+        storeImg = store.img;
+        slotName = null;
+      };
+      espInmemory = esp {
+        inherit (config) name system;
+        bootloader = config.espBinary;
+        entries = [{
+          name = "nixos";
+          title = config.name;
+          kernel = "${treeInmemory}/kernel";
+          initrd = "${treeInmemory}/initrd";
+          inherit (config) kernelParams;
+        }];
+      };
+      diskInmemory = tools.gptDisk {
+        inherit (config) name;
+        partitions = [
+          { fs = "vfat"; label = "ESP"; img = espInmemory; }
+        ] ++ lib.optional (config.slot != null) {
+          fs = "vfat"; code = "8300"; label = config.slot.name; img = slotImg;
+        };
+      };
+
+      rawFile = if placement == "initrd" then diskInmemory else disk;
+
       byFormat = {
         raw = {
-          file = disk;
-          layout = disk.layout;
+          file = rawFile;
+          layout = rawFile.layout;
           slot = if config.slot == null then null
                  else { destination = "partition"; name = config.slot.name; fs = "vfat"; };
         };
         qcow2 = byFormat.raw // {
           file = pkgs.runCommand "${config.name}.qcow2"
             { nativeBuildInputs = [ pkgs.qemu-utils ]; }
-            ''qemu-img convert -f raw -O qcow2 ${disk} "$out"'';
+            ''qemu-img convert -f raw -O qcow2 ${rawFile} "$out"'';
         };
         iso = {
           file = iso {

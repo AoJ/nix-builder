@@ -343,10 +343,13 @@ which is this block's `keyDestination` input. The contract keeps them apart.
 machine cannot carry out is refused before anything destructive, and a refused target is left
 untouched — refusal is a fact of the machine (an absent disk, a disk carrying the running
 system, a capacity the carried closure cannot fit), never of eval. An installed target is
-never reformatted: the probe decides between mount and create, and only a create clears the
-declared disks — completely, and only ever those; any other disk comes through an install
-untouched. The key lands at its declared destination, the closure installs offline, and the
-teardown releases the target completely, so the installed system comes up on its own.
+never reformatted by accident — and is replaced on PURPOSE: with explicit reinstall intent
+the act deliberately overwrites any disk holding an existing system, bounded the same two
+ways as everything destructive here: only the disks the host declares, and never a disk the
+running system lives on. Only a create clears the declared disks — completely, and only ever
+those; any other disk comes through an install untouched. The key lands at its declared
+destination, the closure installs offline, and the teardown releases the target completely,
+so the installed system comes up on its own.
 
 The block's installer OS is a minimal system of the block's own whose one service runs the
 action against the block's inputs: `prepare` creates AND mounts, `mount` is the never-reformat

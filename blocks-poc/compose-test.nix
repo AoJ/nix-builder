@@ -60,7 +60,9 @@ let
       prepare = pkgs.writeShellScript "prepare" "sgdisk --zap-all /dev/target";
       mount = pkgs.writeShellScript "mount" "mount /dev/target-root \"$1\"";
       pool = "rpool";
+      encrypted = false;
       keyDestination = "/var/lib/sops/age.key";
+      poolKeyDestination = null;
       disks = [ "/dev/target" ];
       report = null;
     };

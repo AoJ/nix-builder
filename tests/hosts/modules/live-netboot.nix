@@ -11,5 +11,8 @@
     options = [ "mode=0755" ];
   };
   boot.loader.systemd-boot.enable = lib.mkForce false;
+  # No bootloader install step means nothing ever appends initrd secrets — the host's
+  # declared ones cannot ride a live face.
+  boot.initrd.secrets = lib.mkForce { };
   boot.kernelParams = [ "boot.live" ];
 }

@@ -16,6 +16,7 @@ let
     mount = pkgs.writeShellScript "mount" "zpool import rpool && mount -t zfs rpool/root /mnt";
     pool = "rpool";
     storage = "zfs";
+    encrypted = false;
     keyDestination = "/var/lib/sops/age.key";
     disks = [ "/dev/target" ];
     report = null;
@@ -31,6 +32,10 @@ let
     slotFace = tools.slotFace { format = "raw"; name = "secrets"; };
   };
   handed = install base;
+  handedEncrypted = install (base // {
+    encrypted = true;
+    poolKeyDestination = "/var/keys/pool.key";
+  });
 
   refused = args: !(builtins.tryEval (install (base // args)).system.toplevel.drvPath).success;
 
@@ -58,6 +63,10 @@ assert lib.assertMsg (refused { storage = "squashfs"; })
   "storage outside the installable set must be refused at eval";
 assert lib.assertMsg (refused { rootMode = "self-hosting"; })
   "an unknown root mode must be refused at eval";
+assert lib.assertMsg (refused { storage = "ext4"; encrypted = true; })
+  "L3: encryption outside the zfs layout must be refused at eval";
+assert lib.assertMsg (refused { poolKeyDestination = "/var/keys/pool.key"; })
+  "a pool key destination on an unencrypted target must be refused at eval";
 
 pkgs.runCommand "test-install"
   { nativeBuildInputs = [ pkgs.gptfdisk pkgs.e2fsprogs pkgs.jq pkgs.coreutils pkgs.gnugrep ]; }
@@ -75,6 +84,13 @@ pkgs.runCommand "test-install"
     grep -q ${target} "$starter"
     grep -q '/dev/target' "$starter"
     grep -q 'INSTALL-OK fixture' "$starter"
+
+    echo "== the encryption declaration and the key destination reach the action =="
+    unit_enc=${handedEncrypted.system.toplevel}/etc/systemd/system/action-install.service
+    starter_enc="$(grep -oP 'ExecStart=\K\S+' "$unit_enc")"
+    grep -qw true "$starter_enc"
+    grep -q '/var/keys/pool.key' "$starter_enc"
+    grep -qw false "$starter"
 
     echo "== the installer's own slot feeds the install-time key to the action =="
     [ -e ${handed.system.toplevel}/etc/systemd/system/slot-key.service ]

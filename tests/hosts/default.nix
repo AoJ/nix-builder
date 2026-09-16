@@ -11,6 +11,12 @@ let
   diskoModule = (import ../../disko-pin.nix) + "/module.nix";
   targetDevice = "/dev/disk/by-id/virtio-target";
   reportBin = "${record}/bin/e2e-record";
+  # The encrypted host's unlock, one binding read in three places: the install delivers
+  # the pool key to poolKeyTarget on the target, the initrd secret carries that file to
+  # poolKeyInitrd inside the initrd, and the pool's keylocation names poolKeyInitrd — so
+  # stage 1 loads the key from a file that exists exactly when it runs.
+  poolKeyTarget = "/var/keys/pool.key";
+  poolKeyInitrd = "/pool.key";
 
   evalHost = system: modules:
     import (pkgs.path + "/nixos/lib/eval-config.nix") {
@@ -21,7 +27,9 @@ let
     prepare = pkgs.writeShellScript "prepare" "sgdisk --zap-all /dev/target";
     mount = pkgs.writeShellScript "mount" "mount /dev/target-root \"$1\"";
     pool = "rpool";
+    encrypted = false;
     keyDestination = "/var/lib/sops/age.key";
+    poolKeyDestination = null;
     disks = [ "/dev/target" ];
     report = null;
   };
@@ -32,7 +40,9 @@ let
   # host's own; nothing generic knows it.
   zfsInstall = {
     pool = "rpool";
+    encrypted = false;
     keyDestination = "/var/lib/sops/age.key";
+    poolKeyDestination = null;
     disks = [ targetDevice ];
     report = reportBin;
     # Runs under the install action's PATH (nix, zfs, util-linux, coreutils); anything
@@ -68,6 +78,8 @@ let
   # one more file riding the same embedded delivery (DECIDED: the bricks combine). The
   # witness line is read back by the encrypted-install e2e.
   zfsEncInstall = zfsInstall // {
+    encrypted = true;
+    poolKeyDestination = poolKeyTarget;
     prepare = pkgs.writeShellScript "prepare-zfs-enc" ''
       set -euo pipefail
       disk=/dev/disk/by-id/virtio-target
@@ -79,12 +91,22 @@ let
       zpool create -f -o ashift=12 -O mountpoint=none -O compression=on \
         -O encryption=on -O keyformat=passphrase \
         -O keylocation=file:///tmp/zfs_root_key rpool "''${disk}-part2"
+      zfs set keylocation=file://${poolKeyInitrd} rpool
       ${reportBin} "E2E-POOL-ENCRYPTION $(zfs get -H -o value encryption rpool)"
       zfs create -o mountpoint=legacy rpool/root
       mkdir -p /mnt
       mount -t zfs rpool/root /mnt
       mkdir -p /mnt/boot
       mount "''${disk}-part1" /mnt/boot
+    '';
+    mount = pkgs.writeShellScript "mount-zfs-enc" ''
+      set -euo pipefail
+      zpool import rpool
+      zfs load-key -L file:///tmp/zfs_root_key rpool
+      mkdir -p /mnt
+      mount -t zfs rpool/root /mnt
+      mkdir -p /mnt/boot
+      mount /dev/disk/by-id/virtio-target-part1 /mnt/boot
     '';
   };
 
@@ -121,7 +143,9 @@ let
           prepare = runtime.config.system.build.diskoScript;
           mount = runtime.config.system.build.mountScript;
           pool = "";
+          encrypted = false;
           keyDestination = "/var/lib/sops/age.key";
+          poolKeyDestination = null;
           disks = map (d: d.device) (lib.attrValues runtime.config.disko.devices.disk);
           report = reportBin;
         } else install;
@@ -180,7 +204,10 @@ in
     name = "e2e-zfs-enc";
     # Its own machine identity: the reinstall e2e replaces the zfs host with this one and
     # a shared hostId would understate what a real replacement changes.
-    modules = [ ./modules/disk-zfs.nix { networking.hostId = lib.mkForce "1badb002"; } ];
+    modules = [ ./modules/disk-zfs.nix {
+      networking.hostId = lib.mkForce "1badb002";
+      boot.initrd.secrets.${poolKeyInitrd} = poolKeyTarget;
+    } ];
     storage = "zfs";
     secrets = withSecrets // {
       files = withSecrets.files ++ [{

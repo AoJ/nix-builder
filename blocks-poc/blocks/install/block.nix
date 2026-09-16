@@ -66,9 +66,20 @@ in
       description = "Shapes the action's probe and teardown — the one zfs-specific branch.";
     };
 
+    encrypted = mkOption {
+      type = types.bool;
+      description = "Whether the target pool is encrypted — the storage layout's declaration (L3).";
+    };
+
     keyDestination = mkOption {
       type = types.str;
       description = "Where the installed system's key lands, once the target exists.";
+    };
+
+    poolKeyDestination = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      description = "Where the delivered pool key lands on the target, for the layout's boot-time unlock to read; null delivers nothing.";
     };
 
     rootMode = mkOption {
@@ -114,14 +125,22 @@ in
 
   config.out.system =
     let
+      encrypted =
+        if config.encrypted && config.storage != "zfs"
+        then throw ("install(${config.name}): encryption is the zfs layout's property (L3)"
+          + " — storage=${config.storage} cannot declare it")
+        else if config.poolKeyDestination != null && !config.encrypted
+        then throw ("install(${config.name}): poolKeyDestination without an encrypted"
+          + " target delivers nothing")
+        else config.encrypted;
       installer = import (pkgs.path + "/nixos/lib/eval-config.nix") {
         inherit (config) system;
         modules = [
           (import ./installer-profile.nix {
             inherit (config) name prepare mount toplevel pool storage keyDestination rootMode
-              isoLabel slotFace disks report machine;
+              isoLabel slotFace disks report machine poolKeyDestination;
+            inherit encrypted;
             actionInstall = tools.actionInstall { inherit (config) storage; };
-            actionWipe = tools.actionWipe { inherit (config) storage; };
             inherit (tools) netbootFace isoFace;
           })
         ];

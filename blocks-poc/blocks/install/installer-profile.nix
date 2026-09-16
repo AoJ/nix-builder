@@ -4,8 +4,9 @@
 # the netboot face (kexec/ipxe), or the iso face keyed by the medium's label (iso). Its
 # hardware support is the HOST's declaration (the machine record) — it boots exactly where
 # the host boots, and carries nothing the host did not claim to need.
-{ name, prepare, mount, toplevel, pool, storage, keyDestination, rootMode, isoLabel
-, slotFace, disks, report, machine, actionInstall, actionWipe, netbootFace, isoFace }:
+{ name, prepare, mount, toplevel, pool, storage, encrypted, keyDestination
+, poolKeyDestination, rootMode, isoLabel, slotFace, disks, report, machine, actionInstall
+, netbootFace, isoFace }:
 
 { pkgs, lib, modulesPath, ... }:
 let
@@ -106,12 +107,14 @@ in
       StandardOutput = "journal+console";
       StandardError = "journal+console";
     };
-    path = [ actionInstall actionWipe pkgs.systemd pkgs.gnugrep ];
+    path = [ actionInstall pkgs.systemd ];
     # A refused or failed install must terminate the machine, visibly: a report line and a
     # poweroff, so a headless box does not sit wedged and a reboot cannot masquerade as
     # success. Reinstall intent arrives over the LOADER's channel: `install.wipe` on the
-    # kernel command line (what a deploy controls when it kexecs the installer) clears the
-    # declared disks first — the one explicit way an existing target gets destroyed.
+    # kernel command line (what a deploy controls when it kexecs the installer) — matched
+    # as an EXACT word, because `install.wipe=0` is what someone writes trying to turn a
+    # destructive switch OFF. The action takes the intent as input and wipes only after
+    # its own gate: refused means untouched, reinstall or not.
     script = ''
       set -euo pipefail
       ${reportFn}
@@ -120,12 +123,19 @@ in
         systemctl poweroff
         exit 1
       }
-      if grep -qw 'install\.wipe' /proc/cmdline; then
+      wipe=no
+      read -ra cmdline < /proc/cmdline
+      for word in "''${cmdline[@]}"; do
+        if [ "$word" = install.wipe ]; then wipe=yes; fi
+      done
+      if [ "$wipe" = yes ]; then
         report_line "REINSTALL ${name}: wiping the declared disks first"
-        action-wipe ${lib.escapeShellArgs disks} || fail
       fi
-      action-install ${lib.escapeShellArgs
-        ([ prepare mount toplevel keyDestination storage pool ] ++ disks)} || fail
+      install_wipe="$wipe" action-install ${lib.escapeShellArgs
+        ([ prepare mount toplevel keyDestination storage pool
+           (if encrypted then "true" else "false")
+           (if poolKeyDestination == null then "" else poolKeyDestination)
+         ] ++ disks)} || fail
       report_line "INSTALL-OK ${name}"
       systemctl reboot
     '';

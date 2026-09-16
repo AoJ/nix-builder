@@ -87,6 +87,11 @@ Derived:
   `nixos-install` populates a filesystem, and a squashfs is generated from one. The deliverable
   for a `runtime.storage = squashfs` host is the runtime image itself, and its `-install`
   endpoints are holes the matrix names.
+- **L7 — an install's target is WHOLE disks, never a partition inside one (DECIDED, aoj
+  2026-09-16).** The act's two promises are disk-granular — a create clears exactly the
+  declared disks, and never-reformat protects everything else — and a target sharing a disk
+  with anything foreign would make both impossible to state. Installing into an existing
+  partition is out of scope: a refused declaration, not a smaller install.
 
 ## The endpoint set — DECIDED
 
@@ -342,14 +347,18 @@ which is this block's `keyDestination` input. The contract keeps them apart.
 **The install ACT.** Its contract: an install the
 machine cannot carry out is refused before anything destructive, and a refused target is left
 untouched — refusal is a fact of the machine (an absent disk, a disk carrying the running
-system, a capacity the carried closure cannot fit), never of eval. An installed target is
+system, a capacity the carried closure cannot fit, an encrypted target whose passphrase was
+never delivered), never of eval. An installed target is
 never reformatted by accident — and is replaced on PURPOSE: with explicit reinstall intent
 the act deliberately overwrites any disk holding an existing system, bounded the same two
 ways as everything destructive here: only the disks the host declares, and never a disk the
 running system lives on. Only a create clears the declared disks — completely, and only ever
 those; any other disk comes through an install untouched. The key lands at its declared
 destination, the closure installs offline, and the teardown releases the target completely,
-so the installed system comes up on its own.
+so the installed system comes up on its own. An encrypted target's boot-time pool key is
+delivered the same way the host's own key is — onto the target, at the destination the
+host declares; nothing is generated on the target and nothing rides the store. Placing it
+where boot can read it before unlock is the host layout's business, not the act's.
 
 The block's installer OS is a minimal system of the block's own whose one service runs the
 action against the block's inputs: `prepare` creates AND mounts, `mount` is the never-reformat
@@ -659,13 +668,7 @@ the design, not the test author's taste.
    changes are expected here (aoj), too early to describe.
 4. Building (not just evaluating) arm artifacts on an x86 box via binfmt — parked; measured
    elsewhere to boot in tens of seconds, so it is a capacity question, not a feasibility one.
-5. The encrypted host's boot-time pool key: the install DELIVERS it onto the target at a
-   declared destination — the same delivery class phase 2 fills the slot with (aoj); nothing
-   is generated on the target and nothing rides the store. Where it lands so the pool can
-   read it before unlock is the host layout's to say. Remaining: the action's delivery, the
-   host-side keylocation, and the encrypted target's boot e2e — install-encrypted and
-   zfs-reinstall stop at on-disk proofs today.
-6. Integration into the repo: delete lib/50_install (now `action-install` in blocks), retire
+5. Integration into the repo: delete lib/50_install (now `action-install` in blocks), retire
    nixos-generators and the old image paths, and drive real host records through the schema
    seam. This is the last track and the one the withdrawn branch got wrong by leaving deletions
    for last — each move pairs with its deletion.

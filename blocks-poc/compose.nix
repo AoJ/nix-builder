@@ -112,7 +112,8 @@ let
       inherit (host) name system;
       toplevel = host.variants.runtime.toplevel;
       closure = [ host.variants.runtime.toplevel ];
-      inherit (host.install) prepare mount pool keyDestination disks report;
+      inherit (host.install) prepare mount pool keyDestination disks report
+        encrypted poolKeyDestination;
       storage = host.variants.runtime.storage;
       machine = host.variants.runtime.machine;
       inherit rootMode isoLabel;

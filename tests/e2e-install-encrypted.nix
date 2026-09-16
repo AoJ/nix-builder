@@ -1,8 +1,8 @@
 # L3's real case: the encrypted pool, created at install with the passphrase the slot
 # delivered — no placeholder anywhere, no prompt anywhere (DECIDED: full automation; a host
-# wanting interactive unlock changes its layout, not the delivery). Phase A only, and on
-# purpose: booting the encrypted target unattended needs the host's own unlock story,
-# which is layout land, outside blocks — the witnesses here are the installer's.
+# wanting interactive unlock changes its layout, not the delivery). Then the installed
+# system boots unattended: the install delivered the pool key to the destination the
+# host's layout declared, and the layout's stage-1 read unlocks the pool with it.
 { pkgs, compose, hosts }:
 
 let
@@ -44,6 +44,23 @@ in
     grep -q "installer: pool passphrase taken from the slot" result
     grep -q "E2E-POOL-ENCRYPTION aes-256-gcm" result
     grep -q "INSTALL-OK e2e-zfs-enc" result
+
+    echo "== the encrypted target boots unattended — the delivered key unlocks the pool =="
+    truncate -s 16M result-boot.img; mkfs.fat -n E2EOUT result-boot.img > /dev/null
+    install -m 0644 ${pkgs.OVMF.fd}/FV/OVMF_VARS.fd vars.fd
+    sc=0
+    timeout 600 qemu-system-x86_64 -enable-kvm -cpu host -m 1024 -smp 2 \
+      -drive if=pflash,format=raw,readonly=on,file=${pkgs.OVMF.fd}/FV/OVMF_CODE.fd \
+      -drive if=pflash,format=raw,file=vars.fd \
+      -drive if=none,id=target,format=raw,file=target.img \
+      -device virtio-blk-pci,drive=target,serial=target \
+      -drive if=none,id=eout,format=raw,file=result-boot.img \
+      -device virtio-blk-pci,drive=eout,serial=e2eout \
+      -serial file:boot.log -display none -no-reboot || sc=$?
+    echo "boot qemu exited $sc" >&2
+    mcopy -i result-boot.img ::/log result-boot 2>/dev/null || touch result-boot
+    echo "=== result-boot:" >&2; cat result-boot >&2
+    grep -q "E2E-BOOT-OK e2e-zfs-enc" result-boot
 
     touch "$out"
   ''

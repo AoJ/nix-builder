@@ -27,6 +27,8 @@ let
     self-reinstall = import ./e2e-self-reinstall.nix { inherit pkgs compose hosts; };
     never-reformat = import ./e2e-never-reformat.nix { inherit pkgs compose hosts; };
     install-gate = import ./e2e-install-gate.nix { inherit pkgs compose hosts; };
+    capability-gate = import ./e2e-capability-gate.nix { inherit pkgs compose hosts; };
+    zfs-reinstall = import ./e2e-zfs-reinstall.nix { inherit pkgs compose hosts; };
   };
 
   coverage = import ./coverage.nix {

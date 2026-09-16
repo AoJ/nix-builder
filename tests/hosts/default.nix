@@ -178,7 +178,9 @@ in
 
   zfs-enc = mk {
     name = "e2e-zfs-enc";
-    modules = [ ./modules/disk-zfs.nix ];
+    # Its own machine identity: the reinstall e2e replaces the zfs host with this one and
+    # a shared hostId would understate what a real replacement changes.
+    modules = [ ./modules/disk-zfs.nix { networking.hostId = lib.mkForce "1badb002"; } ];
     storage = "zfs";
     secrets = withSecrets // {
       files = withSecrets.files ++ [{

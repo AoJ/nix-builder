@@ -5,7 +5,7 @@
 # hardware support is the HOST's declaration (the machine record) — it boots exactly where
 # the host boots, and carries nothing the host did not claim to need.
 { name, prepare, mount, toplevel, pool, storage, keyDestination, rootMode, isoLabel
-, slotFace, disks, report, machine, actionInstall, netbootFace, isoFace }:
+, slotFace, disks, report, machine, actionInstall, actionWipe, netbootFace, isoFace }:
 
 { pkgs, lib, modulesPath, ... }:
 let
@@ -106,19 +106,26 @@ in
       StandardOutput = "journal+console";
       StandardError = "journal+console";
     };
-    path = [ actionInstall pkgs.systemd ];
+    path = [ actionInstall actionWipe pkgs.systemd pkgs.gnugrep ];
     # A refused or failed install must terminate the machine, visibly: a report line and a
     # poweroff, so a headless box does not sit wedged and a reboot cannot masquerade as
-    # success.
+    # success. Reinstall intent arrives over the LOADER's channel: `install.wipe` on the
+    # kernel command line (what a deploy controls when it kexecs the installer) clears the
+    # declared disks first — the one explicit way an existing target gets destroyed.
     script = ''
       set -euo pipefail
       ${reportFn}
-      if ! action-install ${lib.escapeShellArgs
-        ([ prepare mount toplevel keyDestination storage pool ] ++ disks)}; then
+      fail() {
         report_line "INSTALL-FAILED ${name}"
         systemctl poweroff
         exit 1
+      }
+      if grep -qw 'install\.wipe' /proc/cmdline; then
+        report_line "REINSTALL ${name}: wiping the declared disks first"
+        action-wipe ${lib.escapeShellArgs disks} || fail
       fi
+      action-install ${lib.escapeShellArgs
+        ([ prepare mount toplevel keyDestination storage pool ] ++ disks)} || fail
       report_line "INSTALL-OK ${name}"
       systemctl reboot
     '';

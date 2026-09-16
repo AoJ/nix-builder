@@ -121,6 +121,7 @@ in
             inherit (config) name prepare mount toplevel pool storage keyDestination rootMode
               isoLabel slotFace disks report machine;
             actionInstall = tools.actionInstall { inherit (config) storage; };
+            actionWipe = tools.actionWipe { inherit (config) storage; };
             inherit (tools) netbootFace isoFace;
           })
         ];

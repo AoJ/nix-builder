@@ -18,6 +18,14 @@ set -euo pipefail
 
 command -v nix > /dev/null 2>&1 || { echo "run-all: nix not on PATH" >&2; exit 1; }
 
+# A cold full run builds ~15-20G of artifacts; starting under that just trades a clear
+# refusal now for ENOSPC failures mid-suite.
+free_kib=$(df --output=avail /nix/store | tail -1)
+if [ "$free_kib" -lt $((20 * 1024 * 1024)) ]; then
+  echo "run-all: only $((free_kib / 1024 / 1024))G free on /nix/store — a cold run needs ~20G;" >&2
+  echo "run-all: garbage-collect first (nix-collect-garbage), or expect ENOSPC failures" >&2
+fi
+
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 cd "$here"
 logdir="$here/.logs"

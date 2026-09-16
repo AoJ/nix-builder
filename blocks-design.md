@@ -339,41 +339,14 @@ installer's OWN slot — where the install-time key is read from, `image`'s inpu
 installer is packed — and the place the installed host's key lands on the target it just created,
 which is this block's `keyDestination` input. The contract keeps them apart.
 
-**The install ACT is `action-install`, reached as a tool.** Its contract, in order:
-
-- **The running-system gate, before even the probe: no declared disk may carry the running
-  system.** A disk that still has mounts is the one the installer booted from — a
-  disk-rooted installer pointed at its own boot medium. This cannot be checked at eval (the
-  target may be named by an id nobody knows ahead, and which disk was booted from is a fact
-  of the machine), and the probe cannot be trusted to catch it — its mount path would mount
-  the installer's own root at `/mnt` and "find" a present target. A memory-rooted installer
-  holds no disk and passes vacuously, which is what keeps its any-disk freedom intact. The
-  wipe applies the same gate independently, for standalone callers. A refusal reports
-  `INSTALL-FAILED` and powers the machine off — a headless box must not sit wedged, and a
-  reboot must not masquerade as success.
-- **Probe first, and never reformat an installed target.** For zfs the probe is `zpool import`
-  — the pool is the thing that persists; for a plain filesystem the probe is the mount script
-  itself, which succeeds on an installed target and fails on a fresh disk. A present target is
-  mounted at `/mnt` and nothing destructive ever runs. `storage = zfs` requires a non-empty
-  pool name up front — an empty name must fail the argument check, never reach the probe and
-  decide between mount and format by accident.
-- **A create begins with `action-wipe` over the target's declared `disks`.** The wipe releases
-  every holder in dependency order — swap, a stale `/mnt` (a failed mount probe is not
-  all-or-nothing and may leave a partial tree mounted), imported pools, md arrays — then
-  deep-clears each device: partition signatures, all blocks (discard, or zeroing the head
-  where discard is unsupported), and the partition table. Deep, because a signature inside an
-  old partition survives a plain signature wipe and makes the following create see a disk in
-  use. Only then does the create script — disko's create, or an equivalent — format and mount
-  the target at `/mnt`.
-- **The create runs under no timeout.** Killing a destructive, non-rerunnable write mid-flight
-  manufactures exactly the half-written state the probe exists to prevent. `nixos-install`
-  keeps its budget, being re-runnable.
-- **Key, system, teardown.** The installed system's age key (when delivered) is placed at its
-  declared destination on the mounted target, `nixos-install` unpacks the carried closure
-  offline, and the teardown unmounts the whole `/mnt` tree — `nixos-install` leaves chroot
-  binds that keep the storage busy. A zfs pool is additionally EXPORTED and the export
-  verified, because a still-imported pool boots the installed system to emergency; a plain
-  filesystem has no equivalent.
+**The install ACT.** Its contract: an install the
+machine cannot carry out is refused before anything destructive, and a refused target is left
+untouched — refusal is a fact of the machine (an absent disk, a disk carrying the running
+system, a capacity the carried closure cannot fit), never of eval. An installed target is
+never reformatted: the probe decides between mount and create, and only a create clears the
+declared disks — completely, and only ever those; any other disk comes through an install
+untouched. The key lands at its declared destination, the closure installs offline, and the
+teardown releases the target completely, so the installed system comes up on its own.
 
 The block's installer OS is a minimal system of the block's own whose one service runs the
 action against the block's inputs: `prepare` creates AND mounts, `mount` is the never-reformat
@@ -678,21 +651,12 @@ the design, not the test author's taste.
    declaration), but neither validates an artifact someone hands you. Whether this gate is
    wanted at all, and whether it sits in deploy or as its own app, is aoj's call.
 2. What belongs in `tools` besides the current set — a placeholder so additions stay conscious.
-3. The self-install closure bound is the INSTALL SCRIPT's safe gate, not an eval assertion
-   (aoj): before any mutable operation it compares the carried closure against the actual tmpfs
-   capacity it would unpack into — and a squashfs-carried closure is not unpacked at all, so
-   the bound only bites where a copy really lands in tmpfs. The kernel is ours: the tmpfs size
-   is tunable (e.g. 70%), which moves the boundary; the gate reads the real capacity either way.
-4. `action-install`'s EARLY capability gate: refuse up front what the target layout/host cannot
-   do, rather than failing mid-format. The running-system gate exists; the
-   remaining pre-flight checks (does the layout fit the disks that are actually there, does the
-   carried closure fit the target) are the piece still to add — the closure bound is Open 3.
-5. The schema seam is data-only so far: `requires.secrets` → the files/keyTarget record, and
+3. The schema seam is data-only so far: `requires.secrets` → the files/keyTarget record, and
    driving the composer's host records through the seam, remain for integration. Further
    changes are expected here (aoj), too early to describe.
-6. Building (not just evaluating) arm artifacts on an x86 box via binfmt — parked; measured
+4. Building (not just evaluating) arm artifacts on an x86 box via binfmt — parked; measured
    elsewhere to boot in tens of seconds, so it is a capacity question, not a feasibility one.
-7. Integration into the repo: delete lib/50_install (now `action-install` in blocks), retire
+5. Integration into the repo: delete lib/50_install (now `action-install` in blocks), retire
    nixos-generators and the old image paths, and drive real host records through the schema
    seam. This is the last track and the one the withdrawn branch got wrong by leaving deletions
    for last — each move pairs with its deletion.

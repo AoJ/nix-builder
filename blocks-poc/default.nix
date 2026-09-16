@@ -1,5 +1,7 @@
+# Auto-callable (`nix build -f blocks-poc <attr>` and the runner), and callable by the
+# flake with its own nixpkgs — the same tests either way.
+{ pkgs ? import (import ../nixpkgs-pin.nix) { } }:
 let
-  pkgs = import (import ../nixpkgs-pin.nix) { };
   tools = import ./tools { inherit pkgs; };
   compose = import ./compose.nix { inherit pkgs tools; };
 in

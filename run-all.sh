@@ -56,10 +56,13 @@ matches() {
 
 # Discover targets: every attribute whose name says it is a test. The filter lives HERE
 # (tests/default.nix also exports hosts and endpoints, which are inputs, not targets).
+# `nix eval` hands --apply the file's value UNCALLED, so the auto-call `nix build -f`
+# does for the defaulted { pkgs ? … } argument is repeated here.
 discover() {
   local file="$1"
   timeout "$eval_timeout" nix eval --raw -f "$file" --apply '
-    set: builtins.concatStringsSep "\n" (builtins.filter
+    v: let set = if builtins.isFunction v then v { } else v;
+    in builtins.concatStringsSep "\n" (builtins.filter
       (n: builtins.match "(test|e2e)-.*" n != null)
       (builtins.attrNames set))'
 }

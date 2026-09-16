@@ -1,12 +1,12 @@
 { pkgs }:
 
 # The one privileged place: it assembles the tool set that every block is handed, and it is
-# the only spot in the PoC that reaches into the repo's shared lib (mkBashTool + the bash
-# helper lib it prepends). Only tools go in here. A block placed here would let a block
-# reach a block, and the rule that keeps the dependency graph acyclic falls.
+# the only spot that reaches outside blocks-poc (lib/bash-tool.nix + the bash helper lib it
+# prepends). Only tools go in here. A block placed here would let a block reach a block,
+# and the rule that keeps the dependency graph acyclic falls.
 let
   inherit (pkgs) lib;
-  bashTool = args: (import ../../../../lib/core/bashTool.nix) ({ inherit pkgs; } // args);
+  bashTool = args: (import ../../lib/bash-tool.nix) ({ inherit pkgs; } // args);
   ids = import ./ids.nix;
   # zfs (userland here, the kernel module in the installer profile) rides only where the
   # target storage is zfs — an ext4 installer carries neither.

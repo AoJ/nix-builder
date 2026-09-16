@@ -1,8 +1,8 @@
 # The disko source at the repo's pinned rev (flake.lock), fetched like nixpkgs-pin. The
 # ext4 test layout imports disko's NixOS module from here so the host exposes diskoScript /
-# mountScript — the same disko the fleet runs, not a floating one.
+# mountScript — a pinned disko, not a floating one.
 let
-  lock = builtins.fromJSON (builtins.readFile ../../flake.lock);
+  lock = builtins.fromJSON (builtins.readFile ./flake.lock);
   d = lock.nodes.disko.locked;
 in
 builtins.fetchTarball {

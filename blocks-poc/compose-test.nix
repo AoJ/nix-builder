@@ -19,6 +19,13 @@ let
         kernelParams = [ "root=LABEL=nixos" ];
         rootMode = "disk";
         storage = "ext4";
+        machine = {
+          kernelPackages = pkgs.linuxPackages;
+          initrdAvailableKernelModules = [ "virtio_pci" "virtio_blk" ];
+          initrdKernelModules = [ ];
+          kernelModules = [ ];
+          firmware = [ ];
+        };
       };
       # The memory-rooted variants, hand-built (no nixosSystem). liveIso is keyed by label,
       # liveNetboot is plain — the two the composer asks for per live format.

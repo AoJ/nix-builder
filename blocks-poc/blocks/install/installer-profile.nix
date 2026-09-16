@@ -1,9 +1,11 @@
 # The installing OS — the BLOCK's, not the caller's. A minimal, serial-consoled system
 # whose one job is to run the install action against the caller's values, then reboot into
 # what it installed. The installer roots per wrapper: its own ext4 partition (raw/qcow2),
-# the netboot face (kexec/ipxe), or the iso face keyed by the medium's label (iso).
+# the netboot face (kexec/ipxe), or the iso face keyed by the medium's label (iso). Its
+# hardware support is the HOST's declaration (the machine record) — it boots exactly where
+# the host boots, and carries nothing the host did not claim to need.
 { name, prepare, mount, toplevel, pool, storage, keyDestination, rootMode, isoLabel
-, slotFace, disks, report, actionInstall, netbootFace, isoFace }:
+, slotFace, disks, report, machine, actionInstall, netbootFace, isoFace }:
 
 { pkgs, lib, modulesPath, ... }:
 let
@@ -15,24 +17,31 @@ in
 {
   imports = [
     (modulesPath + "/profiles/minimal.nix")
-    # The broad driver set (virtio included), so the installer boots real hardware and not
-    # only qemu.
-    (modulesPath + "/profiles/all-hardware.nix")
   ] ++ lib.optional (rootMode == "memory")
     (if isoLabel != null then isoFace { label = isoLabel; } else netbootFace);
 
   system.stateVersion = "26.05";
   boot.loader.grub.enable = false;
   boot.kernelParams = [ "console=ttyS0" ];
-  boot.kernelModules = [ "vfat" ];
+  boot.kernelPackages = machine.kernelPackages;
+  boot.initrd.availableKernelModules = machine.initrdAvailableKernelModules;
+  boot.initrd.kernelModules = machine.initrdKernelModules;
+  boot.kernelModules = machine.kernelModules ++ [ "vfat" ];
+  hardware.firmware = machine.firmware;
   networking.useDHCP = false;
   networking.hostName = "${name}-installer";
   nix.enable = false;
   users.allowNoPasswordLogin = true;
 
   # If the install wedges, the machine resets rather than hanging forever on a console-less
-  # box. Harmless under qemu without a watchdog device; real hardware arms the timer.
-  systemd.watchdog.runtimeTime = "90s";
+  # box — and the timer stays armed ACROSS the final reboot, so the installed system must
+  # take the watchdog over within the window or the box resets instead of hanging in a bad
+  # boot. The driver arrives with machine.kernelModules (the host's own watchdog
+  # declaration); without a device systemd logs and carries on.
+  systemd.settings.Manager = {
+    RuntimeWatchdogSec = "90s";
+    RebootWatchdogSec = "300s";
+  };
 
   fileSystems."/" = lib.mkIf (rootMode == "disk") {
     device = "/dev/disk/by-partlabel/nixos";

@@ -19,6 +19,15 @@ let
     keyDestination = "/var/lib/sops/age.key";
     disks = [ "/dev/target" ];
     report = null;
+    # Assembled by hand like everything else here: the machine record is DATA, not a
+    # configuration the block could read anything further from.
+    machine = {
+      kernelPackages = pkgs.linuxPackages;
+      initrdAvailableKernelModules = [ "virtio_pci" "virtio_blk" ];
+      initrdKernelModules = [ ];
+      kernelModules = [ ];
+      firmware = [ ];
+    };
     slotFace = tools.slotFace { format = "raw"; name = "secrets"; };
   };
   handed = install base;

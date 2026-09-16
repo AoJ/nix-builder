@@ -43,6 +43,19 @@ in
       description = "Block devices the target lives on — what a create wipes first, and only a create.";
     };
 
+    machine = mkOption {
+      type = types.submodule {
+        options = {
+          kernelPackages = mkOption { type = types.raw; };
+          initrdAvailableKernelModules = mkOption { type = types.listOf types.str; };
+          initrdKernelModules = mkOption { type = types.listOf types.str; };
+          kernelModules = mkOption { type = types.listOf types.str; };
+          firmware = mkOption { type = types.listOf types.package; };
+        };
+      };
+      description = "The target machine as the host declares it — the installer boots exactly where the host boots.";
+    };
+
     report = mkOption {
       type = types.nullOr types.str;
       description = "Executable the installer calls with one line per milestone; null reports nothing.";
@@ -106,7 +119,7 @@ in
         modules = [
           (import ./installer-profile.nix {
             inherit (config) name prepare mount toplevel pool storage keyDestination rootMode
-              isoLabel slotFace disks report;
+              isoLabel slotFace disks report machine;
             actionInstall = tools.actionInstall { inherit (config) storage; };
             inherit (tools) netbootFace isoFace;
           })

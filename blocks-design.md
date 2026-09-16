@@ -382,9 +382,13 @@ teardown — and is the only thing that puts zfs into the installer, kernel modu
 both; an ext4 installer carries neither. `report`, when set, is an executable the installer
 calls with one line per milestone; unset, the installer reports nothing. The installer ROOTS
 per wrapper: its own disk partition for raw/qcow2, the netboot face for kexec/ipxe, the iso
-face keyed by the medium's label for iso — the same faces the live variants wear — with the
-all-hardware driver set so it boots real machines, and a systemd watchdog so a wedged install
-resets a console-less box instead of hanging forever. The installer's slot feeds the
+face keyed by the medium's label for iso — the same faces the live variants wear. Its
+hardware support is the HOST's declaration, handed as the extracted `machine` record —
+kernel, module sets, firmware — so the installer boots exactly where the host boots and
+carries nothing the host did not claim to need; a host unsure of its machine declares the
+broad driver set in its own configuration and its installer inherits it through the same
+values. A systemd watchdog resets a wedged install on a console-less box instead of letting
+it hang forever. The installer's slot feeds the
 delivered-key convention (`/run/sops.age`, and `/tmp/zfs_root_key` for a pool passphrase
 riding the same slot), whichever face delivered it — so phase 2 on an `-install` artifact is
 the same personalize as everywhere else.
@@ -665,6 +669,9 @@ the design, not the test author's taste.
 - **The eval gate is one host per attribute, and the gates run as separate processes** — the
   whole set in one evaluation does not fit a small machine, and a check that is green only where
   there is enough RAM is not a check.
+- **One entry point runs the whole suite** (`run-all.sh`), and it DISCOVERS its targets from
+  the attribute sets — a test that exists but nothing runs is the failure the runner exists
+  to prevent, and a new attribute cannot be forgotten by a runner that predates it.
 
 ## Open
 

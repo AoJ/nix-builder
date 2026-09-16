@@ -47,12 +47,13 @@ in
     cp bystander.img bystander.orig
 
     echo "== phase A: boots from the disk, wipes it, reinstalls it =="
-    # 6G: on the UEFI path the 1.3G initrd (the carried closure) sits in firmware memory
-    # TWICE before the kernel runs — systemd-boot's read buffer plus the EFI stub's copy —
-    # so boot needs ~2x the compressed closure or the firmware refuses with Out of
-    # Resources (the kexec e2es escape this: qemu -initrd loads it once).
+    # On the UEFI path the initrd (the carried closure, ~0.5G for this host) sits in
+    # firmware memory TWICE before the kernel runs — systemd-boot's read buffer plus the
+    # EFI stub's copy — so boot needs ~2x the compressed closure plus the system, or the
+    # firmware refuses with Out of Resources (the kexec e2es escape this: qemu -initrd
+    # loads it once).
     sc=0
-    timeout 1500 qemu-system-x86_64 -enable-kvm -cpu host -m 6144 -smp 2 \
+    timeout 1500 qemu-system-x86_64 -enable-kvm -cpu host -m 3072 -smp 2 \
       -drive if=pflash,format=raw,readonly=on,file=${pkgs.OVMF.fd}/FV/OVMF_CODE.fd \
       -drive if=pflash,format=raw,file=vars.fd \
       -drive if=none,id=target,format=raw,file=target.img \

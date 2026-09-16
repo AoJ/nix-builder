@@ -114,6 +114,7 @@ let
       closure = [ host.variants.runtime.toplevel ];
       inherit (host.install) prepare mount pool keyDestination disks report;
       storage = host.variants.runtime.storage;
+      machine = host.variants.runtime.machine;
       inherit rootMode isoLabel;
       slotFace = tools.slotFace { format = faceFormat; inherit (slot) name; };
     }).system;

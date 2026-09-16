@@ -659,7 +659,13 @@ the design, not the test author's taste.
    changes are expected here (aoj), too early to describe.
 4. Building (not just evaluating) arm artifacts on an x86 box via binfmt — parked; measured
    elsewhere to boot in tens of seconds, so it is a capacity question, not a feasibility one.
-5. Integration into the repo: delete lib/50_install (now `action-install` in blocks), retire
+5. The encrypted host's boot-time pool key: the install DELIVERS it onto the target at a
+   declared destination — the same delivery class phase 2 fills the slot with (aoj); nothing
+   is generated on the target and nothing rides the store. Where it lands so the pool can
+   read it before unlock is the host layout's to say. Remaining: the action's delivery, the
+   host-side keylocation, and the encrypted target's boot e2e — install-encrypted and
+   zfs-reinstall stop at on-disk proofs today.
+6. Integration into the repo: delete lib/50_install (now `action-install` in blocks), retire
    nixos-generators and the old image paths, and drive real host records through the schema
    seam. This is the last track and the one the withdrawn branch got wrong by leaving deletions
    for last — each move pairs with its deletion.

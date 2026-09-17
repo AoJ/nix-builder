@@ -23,8 +23,8 @@
       # The consumer API: hand in a pkgs, get the tool set and the composer. The composer
       # takes a host record and returns the full endpoint set — see blocks-design.md.
       lib.mk = { pkgs }: rec {
-        tools = import ./blocks-poc/tools { inherit pkgs; };
-        compose = import ./blocks-poc/compose.nix { inherit pkgs tools; };
+        tools = import ./tools { inherit pkgs; };
+        compose = import ./compose.nix { inherit pkgs tools; };
       };
 
       # Only the mechanism contracts: cheap, host-free, safe in one evaluation. The host
@@ -32,7 +32,7 @@
       # machine, and e2e need KVM and hours. `./run-all.sh` is the suite's one entry
       # point; it discovers every target, these included.
       checks.${system} =
-        import ./blocks-poc { inherit pkgs; }
+        import ./default.nix { inherit pkgs; }
         // { test-bash-lib = import ./lib/bash-lib-test.nix { inherit pkgs; }; };
     };
 }

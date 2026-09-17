@@ -9,7 +9,7 @@
 let
   inherit (pkgs) lib;
   e = compose hosts.ext4;
-  fixture = import ../blocks-poc/blocks/personalize/fixture.nix { inherit pkgs; };
+  fixture = import ../blocks/personalize/fixture.nix { inherit pkgs; };
   boot = import ./lib-boot.nix { inherit pkgs; };
 in
 {

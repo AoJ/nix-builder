@@ -8,7 +8,7 @@
 let
   inherit (pkgs) lib;
   e = compose hosts.zfs;
-  fixture = import ../blocks-poc/blocks/personalize/fixture.nix { inherit pkgs; };
+  fixture = import ../blocks/personalize/fixture.nix { inherit pkgs; };
 in
 {
   witnesses = [ "zfs.image-raw-install" "zfs.image-personalize" "zfs.closure" ];

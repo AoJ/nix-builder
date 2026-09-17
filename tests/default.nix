@@ -8,8 +8,8 @@
 #                           witnessed on the result disk the harness attaches
 { pkgs ? import (import ../nixpkgs-pin.nix) { } }:
 let
-  tools = import ../blocks-poc/tools { inherit pkgs; };
-  compose = import ../blocks-poc/compose.nix { inherit pkgs tools; };
+  tools = import ../tools { inherit pkgs; };
+  compose = import ../compose.nix { inherit pkgs tools; };
   record = import ./e2e-record.nix { inherit pkgs; };
   hosts = import ./hosts { inherit pkgs tools record; };
 

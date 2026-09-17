@@ -8,7 +8,7 @@
 let
   inherit (pkgs) lib;
   e = compose hosts.ext4;
-  fixture = import ../blocks-poc/blocks/personalize/fixture.nix { inherit pkgs; };
+  fixture = import ../blocks/personalize/fixture.nix { inherit pkgs; };
 in
 {
   witnesses = [ "ext4.image-kexec" "ext4.image-personalize-kexec" ];

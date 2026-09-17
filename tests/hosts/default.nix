@@ -5,7 +5,7 @@
 { pkgs, tools, record }:
 
 let
-  fixture = import ../../blocks-poc/blocks/personalize/fixture.nix { inherit pkgs; };
+  fixture = import ../../blocks/personalize/fixture.nix { inherit pkgs; };
   extract = import ../extract.nix;
   inherit (pkgs) lib;
   diskoModule = (import ../../disko-pin.nix) + "/module.nix";

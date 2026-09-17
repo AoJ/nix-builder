@@ -4,7 +4,7 @@ The design for the image / install / secrets factory, and for what deploy receiv
 absorbs the decisions of `docs/plan-image-build.md` — vocabulary, laws, endpoint set, the two
 layers — so it reads standalone; the plan remains the record of MEASURED evidence, the withdrawn
 branch's algorithm inventory, and the step order. The contracts are each block's `block.nix`
-options — validated `evalModules` interfaces — and the code is `docs/blocks/blocks-poc/`;
+options — validated `evalModules` interfaces — and the code is the repository itself;
 both are referenced by path, never inlined.
 
 **Provenance.** Everything marked DECIDED is something aoj stated, in aoj's own words where
@@ -13,10 +13,10 @@ a decision — the withdrawn branch broke this rule once, and the decision had t
 memory after the session that took it was lost.
 
 A block has a declared input, a declared output, its own tests, and keeps its implementation
-details inside. It does not import another block. Verified in `docs/blocks/blocks-poc/`: all four
+details inside. It does not import another block. Verified at the repository root: all four
 blocks, the store tool, and a composer (`compose.nix`) that drives the full endpoint set over a
 hand-assembled host — six test suites, no `nixosSystem` in any of them. Real configurations
-enter one directory later, `docs/blocks/tests/`: four hosts spanning the dimensions, the real
+enter one directory later, `tests/`: four hosts spanning the dimensions, the real
 extraction and extendModules step, an eval-only gate forcing every endpoint of every host to a
 `.drv`, and e2e boots of the assembled artifacts under OVMF/KVM.
 
@@ -447,7 +447,7 @@ runs between the tool and the module.
 What remains a real agreement is that constant, spanning build time and boot — so it is asserted
 in the tool's own test rather than left to hold by habit.
 
-Status: the gap is closed on the blocks path — `docs/blocks/tests/hosts/modules/` carries both
+Status: the gap is closed on the blocks path — `tests/hosts/modules/` carries both
 halves for every shape that boots: `read-only-store.nix` (the squashfs partition mount and its
 registration, the appliance case), `live-iso.nix` (the medium by label, the loop-mounted store,
 the same registration), and the netboot registration rides the live module. What remains is

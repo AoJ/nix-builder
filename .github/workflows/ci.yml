@@ -1,0 +1,46 @@
+# Two gates, matching the suite's own split:
+#   contracts — `nix flake check`: the cheap, host-free mechanism contracts, on every
+#               push and pull request.
+#   suite     — `./run-all.sh`: per-host eval gates and the e2e that boot artifacts
+#               under KVM. Hours and ~20 GB of store, so main and manual runs only.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+      - run: nix flake check -L
+
+  suite:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      # The preinstalled toolchains eat the disk the suite needs.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
+            /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          df -h /
+      # The runner exposes /dev/kvm root-only; the nix build users need it.
+      - name: Open /dev/kvm to builders
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            system-features = kvm big-parallel nixos-test benchmark
+      - run: ./run-all.sh

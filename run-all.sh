@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # docs/blocks/run-all.sh — the ONE entry point for the whole blocks suite: block tests,
-# eval gates, e2e. Targets are DISCOVERED from the attribute sets (blocks-poc/default.nix
+# eval gates, e2e. Targets are DISCOVERED from the attribute sets (the root default.nix
 # and tests/default.nix), so a new test attribute is picked up with no edit here — the
 # failure this runner exists to prevent is a test that exists but nothing runs.
 #
@@ -69,11 +69,11 @@ discover() {
 
 targets=()
 sc=0
-poc_names=$(discover blocks-poc) || sc=$?
-[ "$sc" = 0 ] || { echo "run-all: cannot discover blocks-poc targets" >&2; exit 1; }
+root_names=$(discover .) || sc=$?
+[ "$sc" = 0 ] || { echo "run-all: cannot discover root targets" >&2; exit 1; }
 while IFS= read -r n; do
-  targets+=("blocks-poc:$n")
-done <<< "$poc_names"
+  targets+=(".:$n")
+done <<< "$root_names"
 tests_names=$(discover tests) || sc=$?
 [ "$sc" = 0 ] || { echo "run-all: cannot discover tests targets" >&2; exit 1; }
 while IFS= read -r n; do

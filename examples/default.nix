@@ -1,29 +1,59 @@
-# The examples, wired as suite targets so they cannot rot: each `test-example-*` forces
-# every endpoint the example shows to a .drv (context discarded, nothing built) — the
-# same eval gate the test hosts get, one example per attribute so the runner keeps them
-# in separate nix processes. Browse an example's endpoints directly:
+# The gate that keeps the examples honest: each one is evaluated through the SAME public
+# API a consumer gets from the flake (lib/api.nix — the flake exports this very value),
+# with this checkout standing in for the `builder` input. Every endpoint of every example
+# is then forced to a .drv; nothing is built here.
 #
-#   nix build -f examples example-ext4.endpoints.image-raw.file
+# One example per attribute, because the runner gives each its own nix process — a full
+# endpoint set costs ~1 GB of eval heap.
+#
+#   nix build -f examples ext4.endpoints.image-raw.file     # build what an example makes
 { pkgs ? import (import ../nixpkgs-pin.nix) { } }:
 
 let
   inherit (pkgs) lib;
-  tools = import ../tools { inherit pkgs; };
-  compose = import ../compose.nix { inherit pkgs tools; };
+
+  # What a consumer's `builder` flake input looks like from inside an example.
+  builder = { lib = import ../lib/api.nix; };
+  inherit (builder.lib.mk { inherit pkgs; }) compose;
+
+  # Only the ext4 example needs a disko module; a consumer passes their own input's
+  # (disko.nixosModules.disko), the gate passes the pinned source's.
+  diskoModule = (import ../disko-pin.nix) + "/module.nix";
 
   examples = {
-    ext4 = import ./host-ext4.nix { inherit pkgs tools compose; };
-    zfs = import ./host-zfs.nix { inherit pkgs tools compose; };
-    zfs-encrypted = import ./host-zfs-encrypted.nix { inherit pkgs tools compose; };
-    memory = import ./host-memory.nix { inherit pkgs tools compose; };
+    ext4 = import ./ext4/host.nix { inherit pkgs builder diskoModule; };
+    zfs = import ./zfs/host.nix { inherit pkgs builder; };
+    zfs-encrypted = import ./zfs-encrypted/host.nix { inherit pkgs builder; };
+    memory = import ./memory/host.nix { inherit pkgs builder; };
   };
 
-  gate = name: example:
-    pkgs.writeText "test-example-${name}" (lib.concatStringsSep "\n"
-      (lib.mapAttrsToList
-        (n: d: "${n} ${builtins.unsafeDiscardStringContext d.drvPath}")
-        example.shown));
+  # The endpoint names each example's flake.nix actually exposes — listed here so the
+  # gate proves those exist, and the copy-paste flakes cannot promise a name the
+  # composer would refuse.
+  published = {
+    ext4 = [ "image-raw" "image-qcow2" "image-iso" "image-kexec-install"
+             "image-personalize" "image-secrets-vfat" ];
+    zfs = [ "image-kexec-install" "image-raw-install" "image-raw-install-inmemory"
+            "image-iso-install" "image-personalize" "image-personalize-kexec" ];
+    zfs-encrypted = [ "image-kexec-install" "image-raw-install"
+                      "image-personalize-kexec" ];
+    memory = [ "image-raw" "image-kexec" "image-iso" ];
+  };
+
+  endpointsOf = host: compose host;
+
+  drvOf = e: n:
+    builtins.unsafeDiscardStringContext (
+      if lib.hasPrefix "image-personalize" n || lib.hasPrefix "image-secrets" n
+      then e.${n}.run.drvPath
+      else e.${n}.file.drvPath);
+
+  gate = name: host:
+    let e = endpointsOf host;
+    in pkgs.writeText "test-example-${name}"
+      (lib.concatMapStringsSep "\n" (n: "${name}.${n} ${drvOf e n}") published.${name});
 in
 
-lib.mapAttrs' (n: e: lib.nameValuePair "example-${n}" e) examples
-// lib.mapAttrs' (n: e: lib.nameValuePair "test-example-${n}" (gate n e)) examples
+lib.mapAttrs (name: host: { inherit host; endpoints = endpointsOf host; }) examples
+// lib.mapAttrs' (name: host: lib.nameValuePair "test-example-${name}" (gate name host))
+  examples

@@ -20,16 +20,10 @@
       pkgs = import nixpkgs { inherit system; };
     in
     {
-      # The consumer API: hand in a pkgs, get the tool set and the composer. The composer
-      # takes a host record and returns the full endpoint set — see blocks-design.md.
-      lib.mk = { pkgs }: rec {
-        tools = import ./tools { inherit pkgs; };
-        compose = import ./compose.nix { inherit pkgs tools; };
-      };
-
-      # The reference extraction: an evaluated nixosSystem in, the host record's variant
-      # data out (examples/ shows it in use).
-      lib.extract = import ./tests/extract.nix;
+      # The consumer API — `lib.mk { pkgs }` gives tools, the composer and the host-side
+      # modules; `lib.extract` turns an evaluated nixosSystem into a record's variant
+      # data. examples/ shows every piece in use, gated by the suite.
+      lib = import ./lib/api.nix;
 
       # Only the mechanism contracts: cheap, host-free, safe in one evaluation. The host
       # gates and e2e are NOT checks on purpose — one eval of every host outgrows a small

@@ -11,7 +11,15 @@ The design — vocabulary, laws, endpoint set, contracts — is
 
 ## Use
 
-As a flake input:
+Start from a ready host: every directory under [`examples/`](examples/) is self-contained
+and copy-pasteable.
+
+    cp -r examples/ext4 ~/my-host && cd ~/my-host
+    $EDITOR host.nix          # your configuration, your disk id, your secret paths
+    nix build                 # the image
+    nix run .#personalize -- ./result   # phase 2 fills the slot
+
+Or wire it yourself:
 
 ```nix
 {
@@ -52,12 +60,17 @@ refuse at eval (a zfs host's `image-raw`, a squashfs host's installers), never e
 that quietly mean something else.
 
 The host record is extracted DATA — derivations and strings, never a NixOS
-configuration. [`examples/`](examples/) holds one reference host per dimension — plain
-ext4, zfs installers, encrypted zfs (pool key delivery and unattended unlock), a
-squashfs appliance — plus a copy-paste consumer flake; the suite gates them, so they
-cannot drift. The extraction itself is `lib.extract`
-([`tests/extract.nix`](tests/extract.nix)), and [`tests/hosts/`](tests/hosts/) holds the
-records the e2e prove.
+configuration. The API that produces one:
+
+- `lib.extract` — an evaluated `nixosSystem` in, the variant data out.
+- `lib.mk { pkgs }` → `tools`, `compose`, and `modules`: the host-side modules each live
+  variant needs (`modules.liveNetboot`, `modules.liveIso label`, `modules.readOnlyStore
+  { device }`), applied through `extendModules`.
+
+[`examples/`](examples/) has one host per dimension — ext4, zfs installers, encrypted zfs
+with unattended unlock, squashfs appliance — each gated by the suite, so the reference
+cannot drift from the code. [`tests/hosts/`](tests/hosts/) holds the records the e2e
+boot.
 
 ## Tests
 

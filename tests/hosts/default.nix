@@ -6,7 +6,7 @@
 
 let
   fixture = import ../../blocks/personalize/fixture.nix { inherit pkgs; };
-  extract = import ../extract.nix;
+  extract = import ../../lib/extract.nix;
   inherit (pkgs) lib;
   diskoModule = (import ../../disko-pin.nix) + "/module.nix";
   targetDevice = "/dev/disk/by-id/virtio-target";
@@ -154,7 +154,7 @@ let
       # variant per live format; no generic "live" fallback, so a missing one is an eval
       # error, not a silently wrong boot.
       liveNetboot = runtime.extendModules {
-        modules = [ (import ./modules/live-netboot.nix { face = tools.netbootFace; }) ];
+        modules = [ (import ../../modules/live-netboot.nix { face = tools.netbootFace; }) ];
       };
     in
     {
@@ -165,7 +165,7 @@ let
         # The iso's runtime face needs the medium's LABEL, which only the composer knows —
         # so this variant is a function the composer applies.
         liveIso = label: extract (runtime.extendModules {
-          modules = [ (import ./modules/live-iso.nix { inherit label; face = tools.isoFace; }) ];
+          modules = [ (import ../../modules/live-iso.nix { inherit label; face = tools.isoFace; }) ];
         });
       };
       install = installFinal;
@@ -182,7 +182,7 @@ in
 
   memory = mk {
     name = "e2e-memory";
-    modules = [ (import ./modules/read-only-store.nix {
+    modules = [ (import ../../modules/read-only-store.nix {
       roStore = tools.roStore;
       device = "/dev/disk/by-partlabel/nixos";
     }) ];

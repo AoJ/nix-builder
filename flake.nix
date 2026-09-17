@@ -27,6 +27,10 @@
         compose = import ./compose.nix { inherit pkgs tools; };
       };
 
+      # The reference extraction: an evaluated nixosSystem in, the host record's variant
+      # data out (examples/ shows it in use).
+      lib.extract = import ./tests/extract.nix;
+
       # Only the mechanism contracts: cheap, host-free, safe in one evaluation. The host
       # gates and e2e are NOT checks on purpose — one eval of every host outgrows a small
       # machine, and e2e need KVM and hours. `./run-all.sh` is the suite's one entry

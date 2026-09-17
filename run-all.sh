@@ -79,6 +79,11 @@ tests_names=$(discover tests) || sc=$?
 while IFS= read -r n; do
   targets+=("tests:$n")
 done <<< "$tests_names"
+examples_names=$(discover examples) || sc=$?
+[ "$sc" = 0 ] || { echo "run-all: cannot discover examples targets" >&2; exit 1; }
+while IFS= read -r n; do
+  targets+=("examples:$n")
+done <<< "$examples_names"
 
 if [ "$list_only" = 1 ]; then
   for t in "${targets[@]}"; do

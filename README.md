@@ -52,10 +52,12 @@ refuse at eval (a zfs host's `image-raw`, a squashfs host's installers), never e
 that quietly mean something else.
 
 The host record is extracted DATA — derivations and strings, never a NixOS
-configuration. [`tests/extract.nix`](tests/extract.nix) is the reference extraction from
-an evaluated `nixosSystem`, and [`tests/hosts/default.nix`](tests/hosts/default.nix)
-holds complete records spanning the dimensions: ext4, zfs, encrypted zfs (pool key
-delivery and unattended unlock included), memory/squashfs, and a disko-driven install.
+configuration. [`examples/`](examples/) holds one reference host per dimension — plain
+ext4, zfs installers, encrypted zfs (pool key delivery and unattended unlock), a
+squashfs appliance — plus a copy-paste consumer flake; the suite gates them, so they
+cannot drift. The extraction itself is `lib.extract`
+([`tests/extract.nix`](tests/extract.nix)), and [`tests/hosts/`](tests/hosts/) holds the
+records the e2e prove.
 
 ## Tests
 

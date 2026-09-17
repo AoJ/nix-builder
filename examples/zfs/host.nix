@@ -1,30 +1,13 @@
-# The zfs server — the install story. A zfs pool is created by the install, never by the
-# image (law L2), so this host's deliverables are the -install wrappers; asking for
-# `image-raw` or `image-qcow2` REFUSES at eval as a named hole.
+# A zfs server. The configuration states a zfs root, and that is enough for the front door
+# to know the storage and the pool (`rpool/root` → `rpool`). What it cannot read is how to
+# CREATE that pool — a pool is not a disko layout — so this host states its own install
+# recipe: create-and-mount, and mount-an-existing (the never-reformat path).
 #
-# Three installers of the SAME host, and which one an operation uses is the deploy's
-# call, not a property of the host:
-#   image-kexec-install         what a deploy kexecs into a running machine
-#   image-raw-install           disk-rooted: a USB stick installing a DIFFERENT disk,
-#                               carrying the closure RAM-independently
-#   image-raw-install-inmemory  memory-rooted: the closure rides the initrd, the booted
-#                               installer holds no claim on any disk — so the boot
-#                               medium itself is a valid target (the one-disk cloud box)
-#
-# Reinstall over an existing target is an EXPLICIT act: `install.wipe` as an exact word
-# on the installer's kernel command line, the loader channel a deploy controls. Without
-# it a present pool is mounted, never reformatted.
-#
-# The fields, their types and what reads each: lib/host-record.nix — the contract the
-# composer validates every record through.
+# Because the pool is created by the install (law L2), this host has no runtime disk
+# image: `image-raw` refuses, and the deliverables are the installers. See README.md.
 { pkgs, builder }:
 
 let
-  inherit (builder.lib.mk { inherit pkgs; }) modules;
-  inherit (builder.lib) extract;
-
-  system = "x86_64-linux";
-  slotName = "secrets";
   device = "/dev/disk/by-id/virtio-main";
   pool = "rpool";
 
@@ -36,7 +19,6 @@ let
     networking.hostName = "example-zfs";
     users.allowNoPasswordLogin = true;
 
-    # The zfs layout is the host's own declaration; the pool itself appears at install.
     networking.hostId = "8425e349";
     boot.supportedFilesystems = [ "zfs" ];
     boot.zfs.forceImportRoot = false;
@@ -45,20 +27,14 @@ let
     boot.loader.systemd-boot.enable = true;
   };
 
-  nixos = import (pkgs.path + "/nixos/lib/eval-config.nix") {
-    inherit system;
+  host = import (pkgs.path + "/nixos/lib/eval-config.nix") {
+    system = "x86_64-linux";
     modules = [ configuration ];
   };
 in
-{
-  name = "example-zfs";
-  inherit system slotName;
-
-  variants = {
-    runtime = extract nixos // { storage = "zfs"; };
-    liveNetboot = extract (nixos.extendModules { modules = [ modules.liveNetboot ]; });
-    liveIso = label: extract (nixos.extendModules { modules = [ (modules.liveIso label) ]; });
-  };
+builder.lib.imagesFor {
+  inherit pkgs host;
+  slotName = "secrets";
 
   secrets = {
     delivery = [ "embedded" "sidecar" ];
@@ -72,17 +48,13 @@ in
   };
 
   install = {
-    inherit pool;
-    encrypted = false;
     keyDestination = "/var/lib/sops/age.key";
-    poolKeyDestination = null;
+    # The disks a create may clear. With a disko layout this comes from the layout; a
+    # hand-written pool has to say it, and this is the only place that says it.
     disks = [ device ];
-    report = null;
 
-    # prepare creates the pool AND mounts it at /mnt (disko's create+mount role, by hand
-    # here because a pool is not a disko layout). It runs under the install action's PATH
-    # — nix, zfs, util-linux, coreutils — so anything outside that set is spelled
-    # absolutely.
+    # Both scripts run under the install action's PATH — nix, zfs, util-linux, coreutils —
+    # so anything outside that set is spelled absolutely.
     prepare = pkgs.writeShellScript "prepare-zfs" ''
       set -euo pipefail
       disk=${device}
@@ -100,7 +72,6 @@ in
       mount "''${disk}-part1" /mnt/boot
     '';
 
-    # The never-reformat path: the pool is already there, so just mount it.
     mount = pkgs.writeShellScript "mount-zfs" ''
       set -euo pipefail
       zpool import ${pool}

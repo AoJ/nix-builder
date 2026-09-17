@@ -12,10 +12,10 @@ Updating such a machine means shipping a new image, not running an install.
 
 | field | value here | note |
 |---|---|---|
-| `variants.runtime.storage` | `"squashfs"` | makes the installers holes, and tells image which store shape to build |
 | the read-only store module | `modules.readOnlyStore { device = …; }` from `lib.mk` | the tmpfs root, the squashfs mount, and the nix database load at boot |
-| `secrets` | `delivery = [ ]`, no files | |
-| `install` | **absent** | nothing reads it, so nothing has to be invented — the record only holds a host to what its own endpoints need |
+| the storage | **not stated** | the tmpfs root in the configuration already says it |
+| `secrets` | **not stated** | no delivery at all is a valid declaration |
+| `install` | **absent** | nothing reads it, so nothing has to be invented — a host is only held to what its own endpoints need |
 
 The store partition is found by partition label (`nixos`), which is what the image writes —
 the module and the image agree through that one name.

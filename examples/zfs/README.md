@@ -5,15 +5,18 @@ come out of the nix store. So for a zfs host the image is not the deliverable: *
 installer is** (law L2). Asking this host for `image-raw` or `image-qcow2` does not
 produce something subtly wrong, it refuses at eval with the law named.
 
-## What this host provides beyond the plain case
+## What this host states beyond the plain case
 
-| field | value here | why |
-|---|---|---|
-| `variants.runtime.storage` | `"zfs"` | turns the runtime disk images into holes and selects the act's zfs probe |
-| `install.pool` | `"rpool"` | what the act imports to probe, mismatch-checks, and exports before reboot |
-| `install.prepare` | a script: partition, `zpool create`, `zfs create`, mount at `/mnt` | a pool is not a disko layout, so this one is written by hand |
-| `install.mount` | import the pool and mount it | the never-reformat path: a target that mounts is never re-created |
-| `variants.runtime.machine` | from `lib.extract` | the installer is built from it, so it boots exactly where this host boots |
+The configuration says `fileSystems."/" = { device = "rpool/root"; fsType = "zfs"; }`, and
+that alone tells the builder the storage is zfs and the pool is `rpool`. What it cannot
+tell is how that pool comes into existence — a pool is not a disko layout — so this host
+states its own recipe:
+
+| stated | what it is |
+|---|---|
+| `install.prepare` | partition, `zpool create`, `zfs create`, mount at `/mnt` — the create path |
+| `install.mount` | import the pool and mount it — the never-reformat path, tried first |
+| `install.disks` | what a create may clear; with a disko layout this would be read from it |
 
 Both scripts run under the act's own PATH (nix, zfs, util-linux, coreutils); anything
 else is spelled absolutely, as in `host.nix`.

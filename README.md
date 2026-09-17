@@ -19,7 +19,7 @@ and copy-pasteable.
     nix build                 # the image
     nix run .#personalize -- ./result   # phase 2 fills the slot
 
-Or wire it yourself:
+Or wire it into your own flake — one evaluated NixOS system in, every endpoint out:
 
 ```nix
 {
@@ -35,13 +35,26 @@ Or wire it yourself:
     let
       system = "x86_64-linux";
       pkgs = import nixpkgs { inherit system; };
-      inherit (builder.lib.mk { inherit pkgs; }) compose;
-      endpoints = compose myHost;   # myHost: the extracted host record, see below
+      endpoints = builder.lib.imagesFor {
+        inherit pkgs;
+        host = self.nixosConfigurations.srv;   # your own evaluated system
+        slotName = "secrets";
+        secrets = {
+          delivery = [ "embedded" ];
+          bundle = "/run/secrets/srv/bundle.yaml";
+          keyTarget = "/sops.age";
+          files = [{
+            target = "/sops.age";
+            source = "/run/secrets/srv/host.key";
+            runtimeSource = "/run/secrets/srv/host.key";
+          }];
+        };
+      };
     in
     {
       packages.${system} = {
-        image = endpoints.image-raw.file;                    # bootable GPT disk image
-        installer = endpoints.image-kexec-install.file;      # netboot tree that installs the host
+        image = endpoints.image-raw.file;                 # bootable GPT disk image
+        installer = endpoints.image-kexec-install.file;   # netboot tree that installs the host
         qcow = endpoints.image-qcow2.file;
       };
 
@@ -55,17 +68,24 @@ Or wire it yourself:
 }
 ```
 
+The storage, the machine, the live variants, the install recipe and the disk list are
+read out of the configuration. What you state is what a configuration cannot know: the
+slot's name, and where the secrets will be when phase 2 runs.
+
 Every host gets the same endpoint set; combinations a law forbids are named holes that
 refuse at eval (a zfs host's `image-raw`, a squashfs host's installers), never endpoints
 that quietly mean something else.
 
-The host record is extracted DATA — derivations and strings, never a NixOS
-configuration. The API that produces one:
+The API:
 
-- `lib.extract` — an evaluated `nixosSystem` in, the variant data out.
-- `lib.mk { pkgs }` → `tools`, `compose`, and `modules`: the host-side modules each live
-  variant needs (`modules.liveNetboot`, `modules.liveIso label`, `modules.readOnlyStore
-  { device }`), applied through `extendModules`.
+- `lib.imagesFor { pkgs; host; slotName; secrets ? …; install ? …; }` — the front door.
+- `lib.recordFor` — the same, stopping at the record, for a consumer who wants to adjust
+  a field before composing it.
+- `lib.mk { pkgs }` → `tools`, `compose`, `modules` (`liveNetboot`, `liveIso label`,
+  `readOnlyStore { device }` — the host-side modules a memory-rooted host needs),
+  plus `imagesFor` and `recordFor` bound to that `pkgs`.
+- `lib.hostRecord` — the record's option interface: every field, its type, and what reads
+  it. `compose` validates through it, so nothing is implicit.
 
 [`examples/`](examples/) has one host per dimension — ext4, zfs installers, encrypted zfs
 with unattended unlock, squashfs appliance — each gated by the suite, so the reference

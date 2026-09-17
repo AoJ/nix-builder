@@ -1,19 +1,13 @@
-# The appliance — memory-rooted, squashfs store. The runtime image IS the deliverable: a
-# squashfs store is written by the image, never by an install (law L6), so every -install
-# endpoint of this host is a named hole that refuses at eval. Deploying means shipping
-# image-raw itself, or netbooting image-kexec; the disk carries a read-only store and the
-# root lives in RAM.
+# A memory-rooted appliance: a tmpfs root over a read-only squashfs store. That one fact
+# in the configuration is what makes it memory-rooted — the front door reads it, so
+# nothing here says "squashfs" a second time.
 #
-# The fields, their types and what reads each: lib/host-record.nix — the contract the
-# composer validates every record through.
+# The host has no install recipe and needs none: a squashfs store is written by the image
+# (law L6), so its installers are holes and the image itself is the deliverable.
 { pkgs, builder }:
 
 let
   inherit (builder.lib.mk { inherit pkgs; }) modules;
-  inherit (builder.lib) extract;
-
-  system = "x86_64-linux";
-  slotName = "secrets";
 
   configuration = { modulesPath, ... }: {
     imports = [ (modulesPath + "/profiles/qemu-guest.nix") ];
@@ -24,34 +18,20 @@ let
     users.allowNoPasswordLogin = true;
   };
 
-  nixos = import (pkgs.path + "/nixos/lib/eval-config.nix") {
-    inherit system;
+  host = import (pkgs.path + "/nixos/lib/eval-config.nix") {
+    system = "x86_64-linux";
     modules = [
       configuration
       # The read-only store: the squashfs partition the image writes, overlaid and
-      # registered, with a tmpfs root over it. The partition is named by the image's own
-      # store label.
+      # registered, with the tmpfs root over it. The partition is found by the label the
+      # image gives it.
       (modules.readOnlyStore { device = "/dev/disk/by-partlabel/nixos"; })
     ];
   };
 in
-{
-  name = "example-memory";
-  inherit system slotName;
-
-  variants = {
-    runtime = extract nixos // { storage = "squashfs"; };
-    liveNetboot = extract (nixos.extendModules { modules = [ modules.liveNetboot ]; });
-    liveIso = label: extract (nixos.extendModules { modules = [ (modules.liveIso label) ]; });
-  };
-
-  # A host that declares no secrets gets a silent no-op everywhere — every endpoint still
-  # exists, nothing may key off "the host has a bundle".
-  secrets = {
-    delivery = [ ];
-    files = [ ];
-  };
-
-  # No `install` at all: this host's installers are L6 holes, and the record only holds a
-  # host to what its own endpoints actually read.
+builder.lib.imagesFor {
+  inherit pkgs host;
+  slotName = "secrets";
+  # No secrets declared: every secrets and personalize endpoint still exists and is a
+  # silent no-op. Nothing may key off "this host has a bundle".
 }

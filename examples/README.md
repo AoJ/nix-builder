@@ -1,10 +1,9 @@
 # Examples
 
 These exist to answer two questions: **what does a host have to provide**, and **where
-does each of those things come from**. Each directory is a filled-in form of the host
-record; the form itself — every field, its type, and what reads it — is
-[`lib/host-record.nix`](../lib/host-record.nix), which the composer validates every
-record through. Read that for the contract, read these for what a real host looks like.
+does each of those things come from**. Each directory hands one evaluated NixOS system to
+`builder.lib.imagesFor` and gets the whole endpoint set back — so what you see in a
+`host.nix` is exactly the part a configuration cannot state, and nothing else.
 
 They are also runnable (`nix build`), but that is not the point of them.
 
@@ -15,21 +14,31 @@ They are also runnable (`nix build`), but that is not the point of them.
 | [`zfs-encrypted/`](zfs-encrypted/) | the same, encrypted (L3): passphrase at create, key delivered for boot | installers + the phase-2 runner they need |
 | [`memory/`](memory/) | squashfs appliance — the image IS the deliverable (L6) | runtime images only; it has no installer at all |
 
-## What you provide, in every case
+## What is read from the host, and what you state
 
-| you provide | where it comes from | who reads it |
-|---|---|---|
-| the NixOS configuration | you — it is your host | `lib.extract` turns the evaluated system into the record's `variants` |
-| live variants | `extendModules` + a face from `lib.mk`'s `modules` | the iso / kexec / ipxe endpoints, which pack a **different** toplevel |
-| the disk's stable id | the machine (`ls -l /dev/disk/by-id/`) | the install act — this is the wipe's blast radius |
-| `slotName` | you, once — the layout's partition label and the record must say the same word | image (builds the slot), phase 2 (finds it), the installer (reads its own) |
-| `install.prepare` / `install.mount` | your storage layout — disko's own scripts, or equivalents you write | the install act: create-and-mount, and the never-reformat mount |
-| secret **paths** | your vault, at phase-2 run time — see below | the phase-2 and sidecar runners, when they run |
+`imagesFor` reads everything the configuration already knows. You state the rest.
 
-Nothing else is implicit. A field this repo does not read is not in the record, and a
-field it does read has no silent default: a record missing one is refused by name, and
-only when an endpoint that needs it is actually asked for (an appliance with no
-installer never has to invent an `install`).
+| read from the configuration | how |
+|---|---|
+| the storage | `fileSystems."/".fsType` — zfs, ext4, or tmpfs for a memory-rooted host |
+| the root mode | the same fact: a tmpfs root is what memory-rooted means |
+| the machine | kernel, module sets, firmware — so the installer boots where the host boots |
+| the live variants | `extendModules` with our faces, because a live format packs a **different** toplevel |
+| the artifact name | `networking.hostName` |
+| the install recipe | disko's own create and mount scripts, and the layout's disk list |
+| the pool | the first component of a zfs root's dataset (`rpool/root` → `rpool`) |
+| `keyDestination` | sops-nix's `sops.age.keyFile`, when the host has sops-nix |
+
+| you state | why it cannot be read |
+|---|---|
+| `slotName` | it is a name, and the layout's partition label must say the same word |
+| `secrets.*` paths | runtime facts about the deploying machine, not properties of the host |
+| `install.prepare` / `mount` / `disks` | only when the layout is not disko — a hand-made zfs pool has no layout to read |
+| `install.encrypted`, `poolKeyDestination` | decisions about the pool, not statements the configuration makes |
+
+Nothing is guessed. What cannot be derived is refused **by name** when something asks for
+it — and only then: a host with no install recipe keeps every other endpoint, and its
+`-install` ones say what is missing instead of vanishing from the set.
 
 ## Where the secrets come from
 
@@ -41,7 +50,7 @@ nix store. Concretely, once per host:
     age-keygen -y host.key                 # its public half: add as a sops recipient
     sops --encrypt --age "$pub" secrets.yaml > bundle.yaml
 
-Then `secrets.files[].source` and `secrets.bundle` in the record are the paths **where
+Then `secrets.files[].source` and `secrets.bundle` are the paths **where
 those files will be at the moment phase 2 runs** — on the machine doing the
 personalizing, not in the store, not in a derivation. The examples write them as
 `/run/secrets/<host>/…` because that is where a deploy typically drops them.

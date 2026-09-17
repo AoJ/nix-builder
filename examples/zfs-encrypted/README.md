@@ -12,7 +12,7 @@ other secret does.
 | step | who does it | where it lives |
 |---|---|---|
 | the passphrase is generated | you, once, into your vault | never in the store, never in an artifact on disk |
-| it enters the record | `secrets.files` — one more file in the same `embedded` delivery | `/run/secrets/example-zfs-enc/pool.pass` at phase-2 time |
+| it enters the declaration | `secrets.files` — one more file in the same `embedded` delivery | `/run/secrets/example-zfs-enc/pool.pass` at phase-2 time |
 | phase 2 writes it | the personalize runner | the installer artifact's slot, beside the host key |
 | the installer reads it | its slot-key service, at boot | `/tmp/zfs_root_key` in RAM |
 | the pool is created with it | `install.prepare` | as the pool's passphrase — `keyformat=passphrase` |

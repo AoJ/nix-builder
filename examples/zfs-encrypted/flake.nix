@@ -12,8 +12,7 @@
     let
       system = "x86_64-linux";
       pkgs = import nixpkgs { inherit system; };
-      inherit (builder.lib.mk { inherit pkgs; }) compose;
-      endpoints = compose (import ./host.nix { inherit pkgs builder; });
+      endpoints = import ./host.nix { inherit pkgs builder; };
     in
     {
       packages.${system} = {

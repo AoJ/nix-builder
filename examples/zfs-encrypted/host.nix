@@ -1,33 +1,21 @@
-# The encrypted zfs host — the whole key story on top of the plain zfs example.
-# Encryption is a property of the storage layout and follows the install (law L3): no
-# image is ever encrypted, and the pool is created at install with the REAL passphrase.
+# An encrypted zfs host — the plain zfs example plus the key's whole path. Encryption
+# follows the install (law L3): no image is ever encrypted, and the pool is created at
+# install time with the REAL passphrase, delivered like any other secret.
 #
-# Three declarations make the unattended unlock, all of them the HOST's:
-#   pool.pass in secrets.files   the passphrase rides the same embedded delivery as any
-#                                other secret; the installer reads it from its slot. An
-#                                install without it is REFUSED before any wipe — the
-#                                create would otherwise fail after the disk was cleared.
-#   poolKeyDestination           where the install DELIVERS the key onto the target.
-#   keylocation + initrd secret  the layout points the pool at a file the initrd carries,
-#                                sourced from that destination. Stage 1 unlocks with it —
-#                                no prompt anywhere (full automation is the decision; a
-#                                host wanting interactive unlock changes its layout).
+# Three declarations have to agree, and they are bound here through two values:
+#   pool.pass in secrets.files   the passphrase rides the same delivery as the host key;
+#                                an installer without it REFUSES before any wipe
+#   install.poolKeyDestination   where the act delivers it on the target
+#   keylocation + initrd secret  what stage 1 reads to unlock, unattended
 #
-# The fields, their types and what reads each: lib/host-record.nix — the contract the
-# composer validates every record through.
+# See README.md for the seven steps from vault to unlock.
 { pkgs, builder }:
 
 let
-  inherit (builder.lib.mk { inherit pkgs; }) modules;
-  inherit (builder.lib) extract;
-
-  system = "x86_64-linux";
-  slotName = "secrets";
   device = "/dev/disk/by-id/virtio-main";
   pool = "rpool";
-
-  # The two ends of the key's journey, named once: where the install puts it on the
-  # target, and the path inside the initrd that the pool's keylocation names.
+  # The two ends of the key's journey on the target: where the install puts it, and the
+  # path inside the initrd that the pool's keylocation names.
   poolKeyTarget = "/var/keys/pool.key";
   poolKeyInitrd = "/pool.key";
 
@@ -46,30 +34,23 @@ let
     fileSystems."/boot" = { device = "/dev/disk/by-partlabel/ESP"; fsType = "vfat"; };
     boot.loader.systemd-boot.enable = true;
 
-    # The bootloader step copies this file into the initrd at every generation, so the
-    # key is readable before the pool unlocks. It therefore sits in plaintext on the
-    # ESP: whether that is protection enough is the host's call — a host needing more
-    # changes its delivery or its layout, not this mechanism.
+    # The bootloader step copies this into the initrd at every generation, so the key is
+    # readable before the pool unlocks — and therefore sits in plaintext on the ESP.
+    # Whether that is protection enough is this host's call.
     boot.initrd.secrets.${poolKeyInitrd} = poolKeyTarget;
   };
 
-  nixos = import (pkgs.path + "/nixos/lib/eval-config.nix") {
-    inherit system;
+  host = import (pkgs.path + "/nixos/lib/eval-config.nix") {
+    system = "x86_64-linux";
     modules = [ configuration ];
   };
 in
-{
-  name = "example-zfs-enc";
-  inherit system slotName;
+builder.lib.imagesFor {
+  inherit pkgs host;
+  slotName = "secrets";
 
-  variants = {
-    runtime = extract nixos // { storage = "zfs"; };
-    liveNetboot = extract (nixos.extendModules { modules = [ modules.liveNetboot ]; });
-    liveIso = label: extract (nixos.extendModules { modules = [ (modules.liveIso label) ]; });
-  };
-
-  # The pool passphrase is ONE MORE FILE in the same delivery — the bricks combine, there
-  # is no special channel for install-time secrets.
+  # The passphrase is ONE MORE FILE in the same delivery — the bricks combine, there is no
+  # special channel for install-time secrets.
   secrets = {
     delivery = [ "embedded" "sidecar" ];
     bundle = "/run/secrets/example-zfs-enc/bundle.yaml";
@@ -89,12 +70,12 @@ in
   };
 
   install = {
-    inherit pool;
-    encrypted = true;
     keyDestination = "/var/lib/sops/age.key";
-    poolKeyDestination = poolKeyTarget;
     disks = [ device ];
-    report = null;
+    # Not decoration: it makes an installer that was never given the passphrase refuse
+    # BEFORE any wipe, instead of failing the create with the disk already cleared.
+    encrypted = true;
+    poolKeyDestination = poolKeyTarget;
 
     # The create consumes the delivered passphrase (the installer places it at
     # /tmp/zfs_root_key), then repoints keylocation at the initrd path — the file the

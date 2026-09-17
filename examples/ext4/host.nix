@@ -5,6 +5,9 @@
 # The record is DATA: derivations and strings the composer reads. Everything it needs
 # from the builder comes through `builder.lib`; nothing reaches into the builder's
 # source tree.
+#
+# The fields, their types and what reads each: lib/host-record.nix — the contract the
+# composer validates every record through.
 { pkgs, builder, diskoModule }:
 
 let

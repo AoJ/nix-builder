@@ -12,4 +12,6 @@ in
   test-personalize = import ./blocks/personalize/test.nix { inherit pkgs tools; };
   test-store = import ./tools/store-test.nix { inherit pkgs tools; };
   test-compose = import ./compose-test.nix { inherit pkgs tools compose; };
+  test-host-record = import ./lib/host-record-test.nix { inherit pkgs tools; };
+  test-bash-lib = import ./lib/bash-lib-test.nix { inherit pkgs; };
 }

@@ -14,9 +14,17 @@ let
   liveFormats = [ "iso" "kexec" "ipxe" ];
 in
 
-host:
+rawHost:
 
 let
+  # The record goes through its option interface before anything reads it (see
+  # lib/host-record.nix): a missing field, a typo'd name or a wrong type is named HERE,
+  # not met as an attribute error somewhere inside a block. Required fields stay lazy, so
+  # a host that never reaches an endpoint needing one never trips over it.
+  host = (lib.evalModules {
+    modules = [ (import ./lib/host-record.nix { inherit lib; }) rawHost ];
+  }).config;
+
   # The slot name is the HOST's declaration, never a default here: a typo'd host attribute
   # must fail eval, not silently land on a fallback.
   slot = { name = host.slotName; sizeMiB = 4; };
@@ -181,9 +189,11 @@ let
       inherit name slot;
       files = sidecarFiles;
       recipientCheck =
-        if host.secrets ? bundle
-        then { inherit (host.secrets) bundle keyTarget; }
-        else null;
+        if host.secrets.bundle == null then null
+        else if host.secrets.keyTarget == null
+        then throw ("host(${host.name}): secrets.bundle is declared but secrets.keyTarget"
+          + " is not — the recipient check cannot tell which file is the identity")
+        else { inherit (host.secrets) bundle keyTarget; };
     };
 in
 

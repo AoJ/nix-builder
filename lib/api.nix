@@ -22,4 +22,9 @@
 
   # An evaluated nixosSystem in, the variant data a host record carries out.
   extract = import ./extract.nix;
+
+  # The host record's option interface — what a consumer must provide, stated as options
+  # with descriptions. `compose` validates every record through it; read it as the
+  # contract, or evaluate it for generated documentation.
+  hostRecord = import ./host-record.nix;
 }

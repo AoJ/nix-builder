@@ -30,7 +30,6 @@
       # machine, and e2e need KVM and hours. `./run-all.sh` is the suite's one entry
       # point; it discovers every target, these included.
       checks.${system} =
-        import ./default.nix { inherit pkgs; }
-        // { test-bash-lib = import ./lib/bash-lib-test.nix { inherit pkgs; }; };
+        import ./default.nix { inherit pkgs; };
     };
 }

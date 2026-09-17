@@ -43,7 +43,6 @@ in
   endpoints = builtins.mapAttrs (_: compose) hosts;
 
   test-coverage = coverage.check;
-  test-bash-lib = import ../lib/bash-lib-test.nix { inherit pkgs; };
 }
 // builtins.listToAttrs (map (h: {
   name = "test-hosts-compose-${h}";

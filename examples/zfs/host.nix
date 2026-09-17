@@ -14,6 +14,9 @@
 # Reinstall over an existing target is an EXPLICIT act: `install.wipe` as an exact word
 # on the installer's kernel command line, the loader channel a deploy controls. Without
 # it a present pool is mounted, never reformatted.
+#
+# The fields, their types and what reads each: lib/host-record.nix — the contract the
+# composer validates every record through.
 { pkgs, builder }:
 
 let

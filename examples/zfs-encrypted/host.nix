@@ -12,6 +12,9 @@
 #                                sourced from that destination. Stage 1 unlocks with it —
 #                                no prompt anywhere (full automation is the decision; a
 #                                host wanting interactive unlock changes its layout).
+#
+# The fields, their types and what reads each: lib/host-record.nix — the contract the
+# composer validates every record through.
 { pkgs, builder }:
 
 let

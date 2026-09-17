@@ -3,6 +3,9 @@
 # endpoint of this host is a named hole that refuses at eval. Deploying means shipping
 # image-raw itself, or netbooting image-kexec; the disk carries a read-only store and the
 # root lives in RAM.
+#
+# The fields, their types and what reads each: lib/host-record.nix — the contract the
+# composer validates every record through.
 { pkgs, builder }:
 
 let
@@ -49,16 +52,6 @@ in
     files = [ ];
   };
 
-  # No reachable endpoint uses these (the -install set is L6 holes), but the record has
-  # one shape for every host.
-  install = {
-    prepare = pkgs.writeShellScript "prepare" "exit 1";
-    mount = pkgs.writeShellScript "mount" "exit 1";
-    pool = "";
-    encrypted = false;
-    keyDestination = "/var/lib/sops/age.key";
-    poolKeyDestination = null;
-    disks = [ "/dev/disk/by-id/virtio-main" ];
-    report = null;
-  };
+  # No `install` at all: this host's installers are L6 holes, and the record only holds a
+  # host to what its own endpoints actually read.
 }

@@ -31,6 +31,39 @@ in
             description = "The disk to write, zstd-compressed; streamed to the disk, never unpacked to a file.";
           };
 
+          # What a disk assembled on the target is made of — the same pieces the image
+          # endpoint is built from, handed over as data instead of as a finished disk.
+          esp = mkOption {
+            type = types.nullOr types.package;
+            default = null;
+            description = "The ESP as a finished filesystem, written to the target's first partition unchanged.";
+          };
+          registration = mkOption {
+            type = types.nullOr types.path;
+            default = null;
+            description = "The nix database dump for the carried closure (closureInfo's registration).";
+          };
+          storePathsFile = mkOption {
+            type = types.nullOr types.path;
+            default = null;
+            description = "The list of store paths to copy (closureInfo's store-paths).";
+          };
+          storeLabel = mkOption {
+            type = types.nullOr types.str;
+            default = null;
+            description = "Label of the store filesystem — what the host's own fileSystems entry looks for.";
+          };
+          storeUuid = mkOption {
+            type = types.nullOr types.str;
+            default = null;
+            description = "Its uuid, derived like the image's so the assembled disk carries the same identity.";
+          };
+          slotMiB = mkOption {
+            type = types.nullOr types.ints.positive;
+            default = null;
+            description = "How much of the disk the slot takes; the store gets what is left.";
+          };
+
           toplevel = mkOption {
             type = types.nullOr types.package;
             default = null;
@@ -177,6 +210,15 @@ in
         if p.kind == "image" then {
           image = required "payload.image" p.image;
         }
+        else if p.kind == "closure" then {
+          toplevel = required "payload.toplevel" p.toplevel;
+          esp = required "payload.esp" p.esp;
+          registration = required "payload.registration" p.registration;
+          storePathsFile = required "payload.storePathsFile" p.storePathsFile;
+          storeLabel = required "payload.storeLabel" p.storeLabel;
+          storeUuid = required "payload.storeUuid" p.storeUuid;
+          slotMiB = required "payload.slotMiB" p.slotMiB;
+        }
         else {
           toplevel = required "payload.toplevel" p.toplevel;
           prepare = required "payload.prepare" p.prepare;
@@ -186,9 +228,9 @@ in
         if config.encrypted && config.storage != "zfs"
         then throw ("install(${config.name}): encryption is the zfs layout's property (L3)"
           + " — storage=${config.storage} cannot declare it")
-        else if config.encrypted && p.kind == "image"
-        then throw ("install(${config.name}): an image payload is written as it is, so"
-          + " nothing here creates a pool to encrypt")
+        else if config.encrypted && p.kind != "script"
+        then throw ("install(${config.name}): a ${p.kind} payload creates no pool here, so"
+          + " there is nothing for this block to encrypt")
         else config.encrypted;
 
       # kexec hands over to the system that was just written, so its kernel has to be in
@@ -215,6 +257,7 @@ in
             inherit encrypted payload handover;
             kind = p.kind;
             actionInstall = tools.actionInstall { inherit (config) storage; };
+            inherit (tools) assembleDisk;
             inherit (tools) netbootFace isoFace;
           })
         ];
@@ -231,7 +274,10 @@ in
       # What the installer must CARRY: the image to write, or the closure to install —
       # plus, for a kexec ending, the kernel it hands over to.
       storePaths = [ toplevel ]
-        ++ (if p.kind == "image" then [ payload.image ] else [ payload.toplevel ] ++ p.storePaths)
+        ++ (if p.kind == "image" then [ payload.image ]
+            else if p.kind == "closure"
+            then [ payload.toplevel payload.esp payload.registration payload.storePathsFile ]
+            else [ payload.toplevel ] ++ p.storePaths)
         ++ lib.optional (handover != null) handover;
       espBinary =
         "${installer.config.systemd.package}/lib/systemd/boot/efi/systemd-boot${efiArch}.efi";

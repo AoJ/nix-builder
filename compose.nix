@@ -125,6 +125,22 @@ let
     { nativeBuildInputs = [ pkgs.zstd ]; }
     "zstd -3 -T0 -o $out ${raw}";
 
+  # The same disk, as the pieces it is made of: the ESP as built, and what the store needs
+  # to be laid down on a partition sized where it lands.
+  assembled =
+    let
+      parts = runtimeEndpoints.image-raw.parts;
+      closureInfo = pkgs.closureInfo { rootPaths = [ host.variants.runtime.toplevel ]; };
+    in
+    {
+      kind = "closure";
+      toplevel = host.variants.runtime.toplevel;
+      inherit (parts) esp storeLabel storeUuid;
+      slotMiB = if parts.slotMiB == 0 then 1 else parts.slotMiB;
+      registration = "${closureInfo}/registration";
+      storePathsFile = "${closureInfo}/store-paths";
+    };
+
   derivedPayload =
     if host.install.prepare == null && host.variants.runtime.storage == "zfs"
     then throw ("install(${host.name}): a zfs target cannot be delivered as an image — a"
@@ -142,8 +158,12 @@ let
       toplevel = host.variants.runtime.toplevel;
     };
 
+  # `assemble` is the one shape a configuration cannot imply — the host asks for it by
+  # name, and gets the same disk built where its size is known.
   payload =
-    if host.install.payload != null then host.install.payload else derivedPayload;
+    if host.install.payload == "assemble" then assembled
+    else if host.install.payload != null then host.install.payload
+    else derivedPayload;
 
   installerFor = { rootMode, faceFormat, isoLabel }:
     (install {

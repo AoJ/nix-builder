@@ -254,6 +254,23 @@ in
       inherit slotName;
     };
 
+  # The CLOSURE delivery: the same host again, asking for its disk to be laid out on the
+  # target instead of carried there finished. The store partition then takes the size of
+  # the disk actually found, which is the one thing a disk built ahead of time cannot do.
+  assemble-install = mk {
+    name = "e2e-assemble-install";
+    modules = [ ./modules/disk-ext4.nix ];
+    storage = "ext4";
+    secrets = withSecrets;
+    inherit slotName;
+    install = {
+      disks = [ targetDevice ];
+      report = reportBin;
+      payload = "assemble";
+      completion = "kexec";
+    };
+  };
+
   # The IMAGE delivery: the same ext4 host, but declaring no install script at all — so
   # what reaches the target is its own disk image, written as it is. Its disk layout is the
   # image's own (ESP, store, slot), which is why nothing here describes one.

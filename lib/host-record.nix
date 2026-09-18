@@ -235,15 +235,17 @@ in
             '';
           };
           payload = mkOption {
-            type = types.nullOr types.attrs;
+            type = types.nullOr (types.either (types.enum [ "assemble" ]) types.attrs);
             default = null;
             description = ''
               What is delivered, when the host wants to say it rather than have it
-              derived. `{ kind = "image"; image = <zstd-compressed disk>; }` delivers a
-              finished disk from anywhere — including one holding an operating system
-              that is not NixOS at all — and `{ kind = "closure"; … }` names the pieces
-              the install-script path installs. Null derives it from whether this host
-              declared an install script.
+              derived. `"assemble"` asks for the same disk to be laid out on the target
+              instead of carried there finished, which is what a machine whose real disk
+              size is only known on the spot wants. An attrset states a payload outright:
+              `{ kind = "image"; image = <zstd-compressed disk>; }` delivers a finished
+              disk from anywhere, including one holding an operating system that is not
+              NixOS at all. Null derives it — a host with an install script installs
+              through it, a host without one gets its own image.
             '';
           };
           completion = mkOption {

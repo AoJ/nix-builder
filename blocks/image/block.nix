@@ -93,6 +93,15 @@ in
             type = types.nullOr (types.attrsOf types.str);
             description = "The artifact face, as built — what personalize consumes.";
           };
+          parts = mkOption {
+            type = types.nullOr (types.attrsOf types.unspecified);
+            default = null;
+            description = ''
+              The pieces this disk is made of, for a consumer that assembles the same disk
+              somewhere this block cannot reach — on a target whose size is only known
+              there. Null for the formats that are not a disk.
+            '';
+          };
         };
       };
     };
@@ -222,6 +231,14 @@ in
           layout = rawFile.layout;
           slot = if config.slot == null then null
                  else { destination = "partition"; name = config.slot.name; fs = "vfat"; };
+          # The same pieces this disk was built from, so the identical disk can be laid out
+          # on a machine instead — with the store sized to the disk actually there.
+          parts = {
+            esp = espImg;
+            storeLabel = "nixos";
+            storeUuid = tools.ids.uuid "${config.name}:store";
+            slotMiB = if config.slot == null then 0 else config.slot.sizeMiB;
+          };
         };
         qcow2 = byFormat.raw // {
           file = pkgs.runCommand "${config.name}.qcow2"

@@ -3,7 +3,9 @@
 #
 #   image    a finished disk, streamed onto the target as it is. What it holds is never
 #            looked at — a NixOS host, another operating system, anything that boots.
-#   closure  store paths installed onto storage the target's own recipe creates, for a
+#   closure  the same disk, laid out and filled HERE, so the store partition is sized to
+#            the disk in front of us rather than to one guessed at build time.
+#   script   store paths installed onto storage the host's own recipe creates, for a
 #            layout no image can hold (a zfs pool, whose identity is a kernel object).
 #
 #   action-install <createScript> <toplevel> <slotName> <slotFiles> \
@@ -39,8 +41,25 @@ encrypted=${7:-}
 shift 7
 disks=("$@")
 required slot_name slot_files storage
+# What a delivery brings arrives through the environment, so the argument list is the same
+# for every shape. Declared here, empty, because only one shape sets each of them.
 payload_image=${payload_image:-}
-if [ -n "$payload_image" ]; then
+payload_esp=${payload_esp:-}
+payload_registration=${payload_registration:-}
+payload_store_paths=${payload_store_paths:-}
+payload_store_label=${payload_store_label:-}
+payload_store_uuid=${payload_store_uuid:-}
+payload_slot_mib=${payload_slot_mib:-}
+payload_toplevel=${payload_toplevel:-}
+payload_bytes=
+
+if [ -n "$payload_esp" ]; then
+  kind=closure
+  required payload_store_label payload_store_uuid payload_registration payload_store_paths \
+    payload_toplevel payload_slot_mib
+  [ "${#disks[@]}" = 1 ] \
+    || fatal "a disk is assembled on ONE disk; this install declares ${#disks[@]}"
+elif [ -n "$payload_image" ]; then
   kind=image
   [ "${#disks[@]}" = 1 ] \
     || fatal "an image is one disk written as it is; this install declares ${#disks[@]}"
@@ -55,7 +74,7 @@ if [ -n "$payload_image" ]; then
     "" | *[!0-9]*) fatal "the image declares no decompressed size: $payload_image" ;;
   esac
 else
-  kind=closure
+  kind=script
   required create toplevel encrypted
   [ "$storage" != zfs ] || required pool
   [ "$encrypted" = true ] || [ "$encrypted" = false ] \
@@ -109,6 +128,10 @@ capability_gate() {
     return 0
   fi
 
+  if [ "$kind" = closure ]; then
+    toplevel=$payload_toplevel
+  fi
+
   tmp_req=$(mktemp)
   add_cleanup "rm -f '$tmp_req'"
   tmp_du=$(mktemp)
@@ -152,6 +175,19 @@ write_image() {
 zstdcat_to_disk() {
   set -o pipefail
   zstd -dc "$1" | dd of="$2" bs=4M conv=fsync status=none
+}
+
+# The closure way: the same disk as an image delivery, laid out on the target so the store
+# partition takes the size of the disk actually in front of us.
+assemble() {
+  local disk=${disks[0]}
+  info "assembling the disk on $disk"
+  run "wipe $disk" action-wipe "$disk"
+  run "assemble $disk" assemble-disk "$disk" "$payload_esp" "$slot_name" \
+    "$payload_slot_mib" "$payload_store_label" "$payload_store_uuid" \
+    "$payload_registration" "$payload_store_paths" "$payload_toplevel"
+  best_effort "reread partition tables" partprobe "$(readlink -f "$disk")"
+  udevadm settle
 }
 
 # An install REPLACES what is on the declared disks. There is no probe and no "the target
@@ -235,14 +271,22 @@ teardown() {
 info "action-install starting: $kind delivery, storage=$storage${pool:+ pool=$pool}" \
   "slot=$slot_name"
 capability_gate
-if [ "$kind" = image ]; then
-  write_image
-  place_slot
-  info "action-install done — the image is on the disk"
-else
-  wipe_and_create
-  place_slot
-  install_system
-  teardown
-  info "action-install done — $storage installed cleanly"
-fi
+case "$kind" in
+  image)
+    write_image
+    place_slot
+    info "action-install done — the image is on the disk"
+    ;;
+  closure)
+    assemble
+    place_slot
+    info "action-install done — the disk was assembled from the closure"
+    ;;
+  script)
+    wipe_and_create
+    place_slot
+    install_system
+    teardown
+    info "action-install done — $storage installed cleanly"
+    ;;
+esac

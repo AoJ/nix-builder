@@ -4,7 +4,7 @@
 # (raw/qcow2), the netboot face (kexec/ipxe), or the iso face keyed by the medium's label
 # (iso). Its hardware support is the HOST's declaration (the machine record) — it boots
 # exactly where the host boots, and carries nothing the host did not claim to need.
-{ name, kind, payload, pool, storage, encrypted, slotName, slotFiles
+{ name, kind, payload, pool, storage, encrypted, slotName, slotFiles, assembleDisk
 , rootMode, isoLabel, slotFace, disks, report, machine, actionInstall, completion, handover
 , netbootFace, isoFace }:
 
@@ -21,13 +21,28 @@ let
   # The action takes the same nine arguments either way; an image delivery has no create,
   # mount or toplevel to name, and says so with empty ones.
   actionArgs =
-    if kind == "image"
-    then [ "" "" slotName expectedSlotFiles storage pool "" ]
-    else [ payload.prepare payload.toplevel slotName expectedSlotFiles
-           storage pool (if encrypted then "true" else "false") ];
+    if kind == "script"
+    then [ payload.prepare payload.toplevel slotName expectedSlotFiles
+           storage pool (if encrypted then "true" else "false") ]
+    else [ "" "" slotName expectedSlotFiles storage pool "" ];
 
-  payloadEnv = lib.optionalString (kind == "image")
-    "payload_image=${lib.escapeShellArg payload.image} ";
+  # What the delivery needs beyond the arguments, as environment: the action reads a
+  # payload's pieces from here so the argument list stays the same for every shape.
+  payloadEnv =
+    if kind == "image"
+    then "payload_image=${lib.escapeShellArg payload.image} "
+    else if kind == "closure"
+    then lib.concatStringsSep " " [
+      "payload_esp=${lib.escapeShellArg payload.esp}"
+      "payload_registration=${lib.escapeShellArg payload.registration}"
+      "payload_store_paths=${lib.escapeShellArg payload.storePathsFile}"
+      "payload_store_label=${lib.escapeShellArg payload.storeLabel}"
+      "payload_store_uuid=${lib.escapeShellArg payload.storeUuid}"
+      "payload_slot_mib=${toString payload.slotMiB}"
+      "payload_toplevel=${payload.toplevel}"
+      ""
+    ]
+    else "";
 
   # Handing over to what was just installed: its kernel rides in the INSTALLER's store,
   # so nothing has to be read back off the target. `-f` is the whole point of the ending —
@@ -133,7 +148,9 @@ in
       StandardOutput = "journal+console";
       StandardError = "journal+console";
     };
-    path = [ actionInstall pkgs.systemd ] ++ lib.optional (completion == "kexec") pkgs.kexec-tools;
+    path = [ actionInstall pkgs.systemd ]
+      ++ lib.optional (kind == "closure") assembleDisk
+      ++ lib.optional (completion == "kexec") pkgs.kexec-tools;
     # A refused or failed install must terminate the machine, visibly: a report line and a
     # poweroff, so a headless box does not sit wedged and a reboot cannot masquerade as
     # success. Booting this artifact IS the intent — nothing asks a second time, because an

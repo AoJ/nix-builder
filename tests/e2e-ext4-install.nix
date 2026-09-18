@@ -31,6 +31,15 @@ in
     truncate -s 8G target.img
     for r in a b; do truncate -s 16M result-$r.img; mkfs.fat -n E2EOUT result-$r.img > /dev/null; done
 
+    # A previous life on this disk, at BOTH ends. The tail is the half that survives
+    # everything written to the head — GPT's backup header, zfs's last two vdev labels and
+    # mdadm 0.90's superblock all live there, and a layout smaller than the disk never
+    # reaches them. The install must leave neither behind.
+    printf 'STALE-METADATA-%.0s' $(seq 1 4096) > stale
+    dd if=stale of=target.img bs=1M seek=1 conv=notrunc status=none
+    dd if=stale of=target.img bs=1M seek=8100 conv=notrunc status=none
+    grep -c STALE-METADATA target.img > /dev/null
+
     echo "== phase A: the netboot installer formats ext4 via disko and installs =="
     sc=0
     timeout 1500 qemu-system-x86_64 -enable-kvm -cpu host -m 3072 -smp 2 \
@@ -45,6 +54,9 @@ in
     echo "=== install result:" >&2; cat result-a >&2
     grep -q "installer: slot taken over" result-a
     grep -q "INSTALL-OK e2e-ext4-install" result-a
+
+    echo "== the disk's previous life is gone from BOTH ends =="
+    ! grep -c STALE-METADATA target.img
 
     echo "== phase B: the installed ext4 disk boots ALONE =="
     install -m 0644 ${pkgs.OVMF.fd}/FV/OVMF_VARS.fd vars.fd

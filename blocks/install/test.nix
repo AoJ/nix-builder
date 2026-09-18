@@ -17,7 +17,8 @@ let
     pool = "rpool";
     storage = "zfs";
     encrypted = false;
-    keyDestination = "/var/lib/sops/age.key";
+    slotName = "secrets";
+    slotFiles = [ "/sops.age" ];
     disks = [ "/dev/target" ];
     report = null;
     # Assembled by hand like everything else here: the machine record is DATA, not a
@@ -34,7 +35,6 @@ let
   handed = install base;
   handedEncrypted = install (base // {
     encrypted = true;
-    poolKeyDestination = "/var/keys/pool.key";
   });
 
   refused = args: !(builtins.tryEval (install (base // args)).system.toplevel.drvPath).success;
@@ -65,8 +65,8 @@ assert lib.assertMsg (refused { rootMode = "self-hosting"; })
   "an unknown root mode must be refused at eval";
 assert lib.assertMsg (refused { storage = "ext4"; encrypted = true; })
   "L3: encryption outside the zfs layout must be refused at eval";
-assert lib.assertMsg (refused { poolKeyDestination = "/var/keys/pool.key"; })
-  "a pool key destination on an unencrypted target must be refused at eval";
+assert lib.assertMsg (refused { slotName = "Bad Name"; })
+  "a slot name outside the naming rule must be refused at eval";
 
 pkgs.runCommand "test-install"
   { nativeBuildInputs = [ pkgs.gptfdisk pkgs.e2fsprogs pkgs.jq pkgs.coreutils pkgs.gnugrep ]; }
@@ -80,20 +80,19 @@ pkgs.runCommand "test-install"
     grep -q 'action-install' "$starter"
     grep -q 'prepare' "$starter"
     grep -q 'rpool' "$starter"
-    grep -q '/var/lib/sops/age.key' "$starter"
+    grep -q secrets "$starter"
     grep -q ${target} "$starter"
     grep -q '/dev/target' "$starter"
     grep -q 'INSTALL-OK fixture' "$starter"
 
-    echo "== the encryption declaration and the key destination reach the action =="
+    echo "== the encryption declaration reaches the action =="
     unit_enc=${handedEncrypted.system.toplevel}/etc/systemd/system/action-install.service
     starter_enc="$(grep -oP 'ExecStart=\K\S+' "$unit_enc")"
     grep -qw true "$starter_enc"
-    grep -q '/var/keys/pool.key' "$starter_enc"
     grep -qw false "$starter"
 
-    echo "== the installer's own slot feeds the install-time key to the action =="
-    [ -e ${handed.system.toplevel}/etc/systemd/system/slot-key.service ]
+    echo "== the installer's own slot is taken over for the action =="
+    [ -e ${handed.system.toplevel}/etc/systemd/system/slot.service ]
 
     echo "== packed as an ordinary image, the artifact carries the carried closure =="
     root_off="$(jq -r '.[] | select(.label=="nixos") | .startByte' ${packed.layout})"

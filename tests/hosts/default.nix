@@ -11,11 +11,14 @@ let
   diskoModule = (import ../../disko-pin.nix) + "/module.nix";
   targetDevice = "/dev/disk/by-id/virtio-target";
   reportBin = "${record}/bin/e2e-record";
-  # The encrypted host's unlock, one binding read in three places: the install delivers
-  # the pool key to poolKeyTarget on the target, the initrd secret carries that file to
-  # poolKeyInitrd inside the initrd, and the pool's keylocation names poolKeyInitrd — so
-  # stage 1 loads the key from a file that exists exactly when it runs.
-  poolKeyTarget = "/var/keys/pool.key";
+  slotName = "secrets";
+  # Where the install action lays its slot out while it runs — published by the builder,
+  # read by these hosts' own storage scripts. Blocks never learns which file is which.
+  installSlot = (import ../../lib/api.nix).paths.installSlot;
+  # The encrypted host's own unlock story, which is layout land: the slot partition it
+  # gets on the target is mounted here, and its initrd carries a copy of the passphrase
+  # from there — so stage 1 reads a file that exists exactly when it runs.
+  slotMount = "/var/lib/slot";
   poolKeyInitrd = "/pool.key";
 
   evalHost = system: modules:
@@ -28,11 +31,29 @@ let
     mount = pkgs.writeShellScript "mount" "mount /dev/target-root \"$1\"";
     pool = "rpool";
     encrypted = false;
-    keyDestination = "/var/lib/sops/age.key";
-    poolKeyDestination = null;
     disks = [ "/dev/target" ];
     report = null;
   };
+
+  # The zfs layout, written out by hand because a pool is not a disko layout: an ESP, the
+  # SLOT partition the installed host reads its secrets from, and the pool. The slot is
+  # part of the layout exactly like the ESP is — the install fills it, the host mounts it.
+  zfsPartitions = ''
+    disk=${targetDevice}
+    ${pkgs.gptfdisk}/bin/sgdisk -Z "$disk"
+    ${pkgs.gptfdisk}/bin/sgdisk -n 1:0:+512M -t 1:ef00 -c 1:ESP "$disk"
+    ${pkgs.gptfdisk}/bin/sgdisk -n 2:0:+8M -t 2:8300 -c 2:${slotName} "$disk"
+    ${pkgs.gptfdisk}/bin/sgdisk -n 3:0:0 -t 3:bf01 -c 3:zfs "$disk"
+    ${pkgs.systemd}/bin/udevadm settle
+    ${pkgs.dosfstools}/bin/mkfs.fat -F 32 -n ESP "''${disk}-part1"
+    ${pkgs.dosfstools}/bin/mkfs.fat -n SLOT "''${disk}-part2"
+  '';
+  zfsMountTail = ''
+    mkdir -p /mnt
+    mount -t zfs rpool/root /mnt
+    mkdir -p /mnt/boot
+    mount ${targetDevice}-part1 /mnt/boot
+  '';
 
   # The zfs host's REAL extracted install values: its disk-preparation creates the pool
   # (and mounts it — the diskoScript role), its mount handles the already-present pool
@@ -41,8 +62,6 @@ let
   zfsInstall = {
     pool = "rpool";
     encrypted = false;
-    keyDestination = "/var/lib/sops/age.key";
-    poolKeyDestination = null;
     disks = [ targetDevice ];
     report = reportBin;
     # Runs under the install action's PATH (nix, zfs, util-linux, coreutils); anything
@@ -51,62 +70,48 @@ let
     # every wrapper — a disk-rooted installer shifts /dev/vdX, an identity does not.
     prepare = pkgs.writeShellScript "prepare-zfs" ''
       set -euo pipefail
-      disk=/dev/disk/by-id/virtio-target
-      ${pkgs.gptfdisk}/bin/sgdisk -Z "$disk"
-      ${pkgs.gptfdisk}/bin/sgdisk -n 1:0:+512M -t 1:ef00 -c 1:ESP "$disk"
-      ${pkgs.gptfdisk}/bin/sgdisk -n 2:0:0 -t 2:bf01 -c 2:zfs "$disk"
-      ${pkgs.systemd}/bin/udevadm settle
-      ${pkgs.dosfstools}/bin/mkfs.fat -F 32 -n ESP "''${disk}-part1"
-      zpool create -f -o ashift=12 -O mountpoint=none -O compression=on rpool "''${disk}-part2"
+      ${zfsPartitions}
+      zpool create -f -o ashift=12 -O mountpoint=none -O compression=on rpool "''${disk}-part3"
       zfs create -o mountpoint=legacy rpool/root
-      mkdir -p /mnt
-      mount -t zfs rpool/root /mnt
-      mkdir -p /mnt/boot
-      mount "''${disk}-part1" /mnt/boot
+      ${zfsMountTail}
     '';
     mount = pkgs.writeShellScript "mount-zfs" ''
       set -euo pipefail
       zpool import rpool
-      mkdir -p /mnt
-      mount -t zfs rpool/root /mnt
-      mkdir -p /mnt/boot
-      mount /dev/disk/by-id/virtio-target-part1 /mnt/boot
+      ${zfsMountTail}
     '';
   };
 
-  # L3 in practice: the pool is created encrypted with the passphrase the slot delivered —
-  # one more file riding the same embedded delivery (DECIDED: the bricks combine). The
-  # witness line is read back by the encrypted-install e2e.
+  # L3 in practice: the pool is created encrypted with the passphrase that rode the slot —
+  # one more file in the same embedded delivery (DECIDED: the bricks combine). Which file
+  # that is, is this host's own knowledge: it reads it off the published install-slot path,
+  # and blocks never learns what `pool.pass` means. The witness line is read back by the
+  # encrypted-install e2e.
   zfsEncInstall = zfsInstall // {
     encrypted = true;
-    poolKeyDestination = poolKeyTarget;
     prepare = pkgs.writeShellScript "prepare-zfs-enc" ''
       set -euo pipefail
-      disk=/dev/disk/by-id/virtio-target
-      ${pkgs.gptfdisk}/bin/sgdisk -Z "$disk"
-      ${pkgs.gptfdisk}/bin/sgdisk -n 1:0:+512M -t 1:ef00 -c 1:ESP "$disk"
-      ${pkgs.gptfdisk}/bin/sgdisk -n 2:0:0 -t 2:bf01 -c 2:zfs "$disk"
-      ${pkgs.systemd}/bin/udevadm settle
-      ${pkgs.dosfstools}/bin/mkfs.fat -F 32 -n ESP "''${disk}-part1"
+      ${zfsPartitions}
       zpool create -f -o ashift=12 -O mountpoint=none -O compression=on \
         -O encryption=on -O keyformat=passphrase \
-        -O keylocation=file:///tmp/zfs_root_key rpool "''${disk}-part2"
+        -O keylocation=file://${installSlot}/pool.pass rpool "''${disk}-part3"
       zfs set keylocation=file://${poolKeyInitrd} rpool
       ${reportBin} "E2E-POOL-ENCRYPTION $(zfs get -H -o value encryption rpool)"
       zfs create -o mountpoint=legacy rpool/root
-      mkdir -p /mnt
-      mount -t zfs rpool/root /mnt
-      mkdir -p /mnt/boot
-      mount "''${disk}-part1" /mnt/boot
+      ${zfsMountTail}
+      # This host reads its passphrase out of the slot at BOOT (an initrd secret), and
+      # the bootloader step that bakes it in runs during the install — so the slot has to
+      # be mounted where this host says it lives before nixos-install runs.
+      mkdir -p /mnt${slotMount}
+      mount ${targetDevice}-part2 /mnt${slotMount}
     '';
     mount = pkgs.writeShellScript "mount-zfs-enc" ''
       set -euo pipefail
       zpool import rpool
-      zfs load-key -L file:///tmp/zfs_root_key rpool
-      mkdir -p /mnt
-      mount -t zfs rpool/root /mnt
-      mkdir -p /mnt/boot
-      mount /dev/disk/by-id/virtio-target-part1 /mnt/boot
+      zfs load-key -L file://${installSlot}/pool.pass rpool
+      ${zfsMountTail}
+      mkdir -p /mnt${slotMount}
+      mount ${targetDevice}-part2 /mnt${slotMount}
     '';
   };
 
@@ -115,14 +120,14 @@ let
     files = [ ];
   };
 
+  # The host's own secrets, as the host sees them: a file name it chose, and bytes it
+  # brought. The fixture key is a plain file here because a test has one — a deploy with
+  # the material in a variable would say `content.env` instead.
   withSecrets = {
     delivery = [ "embedded" "sidecar" ];
-    bundle = "${fixture}/bundle.yaml";
-    keyTarget = "/sops.age";
     files = [{
       target = "/sops.age";
-      source = "${fixture}/host.key";
-      runtimeSource = "${fixture}/host.key";
+      content.file = "${fixture}/host.key";
     }];
   };
 
@@ -144,8 +149,6 @@ let
           mount = runtime.config.system.build.mountScript;
           pool = "";
           encrypted = false;
-          keyDestination = "/var/lib/sops/age.key";
-          poolKeyDestination = null;
           disks = map (d: d.device) (lib.attrValues runtime.config.disko.devices.disk);
           report = reportBin;
         } else install;
@@ -177,7 +180,7 @@ in
     modules = [ ./modules/disk-ext4.nix ];
     storage = "ext4";
     secrets = withSecrets;
-    slotName = "secrets";
+    inherit slotName;
   };
 
   memory = mk {
@@ -188,7 +191,7 @@ in
     }) ];
     storage = "squashfs";
     secrets = noSecrets;
-    slotName = "secrets";
+    inherit slotName;
   };
 
   zfs = mk {
@@ -196,7 +199,7 @@ in
     modules = [ ./modules/disk-zfs.nix ];
     storage = "zfs";
     secrets = withSecrets;
-    slotName = "secrets";
+    inherit slotName;
     install = zfsInstall;
   };
 
@@ -206,17 +209,24 @@ in
     # a shared hostId would understate what a real replacement changes.
     modules = [ ./modules/disk-zfs.nix {
       networking.hostId = lib.mkForce "1badb002";
-      boot.initrd.secrets.${poolKeyInitrd} = poolKeyTarget;
+      # THE HOST's unlock story, none of which blocks knows: its slot partition mounts
+      # here, and the initrd carries the passphrase from it — the file this host put in
+      # its own slot, under a name of its own choosing.
+      fileSystems.${slotMount} = {
+        device = "/dev/disk/by-partlabel/${slotName}";
+        fsType = "vfat";
+        options = [ "ro" "umask=0077" ];
+      };
+      boot.initrd.secrets.${poolKeyInitrd} = "${slotMount}/pool.pass";
     } ];
     storage = "zfs";
     secrets = withSecrets // {
       files = withSecrets.files ++ [{
         target = "/pool.pass";
-        source = "${fixture}/pool.pass";
-        runtimeSource = "${fixture}/pool.pass";
+        content.file = "${fixture}/pool.pass";
       }];
     };
-    slotName = "secrets";
+    inherit slotName;
     install = zfsEncInstall;
   };
 
@@ -225,7 +235,7 @@ in
     modules = [ ./modules/disk-ext4.nix ];
     storage = "ext4";
     secrets = noSecrets;
-    slotName = "secrets";
+    inherit slotName;
   };
 
   # The arch-split tripwire: a REAL aarch64 configuration, evaluated on this x86 box (pure
@@ -238,7 +248,7 @@ in
     modules = [ ./modules/disk-ext4.nix ];
     storage = "ext4";
     secrets = withSecrets;
-    slotName = "secrets";
+    inherit slotName;
   };
 
   # The ext4 INSTALL host: a real disko layout owns the disk AND the slot partition, so the

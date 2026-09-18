@@ -7,14 +7,18 @@ host, it formats the target at install, and it provides the slot.
 
 ## What this host states
 
-Four things, and that is the whole of `host.nix` beyond the configuration itself:
+Two things, and that is the whole of `host.nix` beyond the configuration itself:
 
 | stated | value here | why it is not read from the host |
 |---|---|---|
 | `slotName` | `"secrets"` | a name — the layout's partition label says the same word |
-| `secrets.files[].source` | `/run/secrets/example-ext4/host.key` | a path on the machine that runs phase 2, at that moment |
-| `secrets.bundle` | `/run/secrets/example-ext4/bundle.yaml` | your sops file; read only to check the identity belongs here |
-| `install.keyDestination` | `/var/lib/sops/age.key` | this example has no sops-nix to read it from |
+| `secrets.files` | `/sops.age`, from a file on the deploying machine | what belongs in the slot, and where its bytes come from |
+
+The file's `target` is a path **inside the slot**, not on the installed system: this host
+mounts its slot wherever it likes and reads from there. `content.file` is one of three
+forms — `content.env` takes the bytes from a variable at run time (a deploy running
+straight from a flake has no files), and `content.text` carries already-encrypted
+material declared in nix.
 
 Everything else comes out of the configuration: the ext4 storage from the root
 filesystem, the install recipe and the disk list from the disko layout, the live variants
@@ -47,4 +51,6 @@ anonymous: it holds an empty slot and no identity.
 
 To install onto a machine instead of writing the disk directly, personalize
 `image-kexec-install` and kexec it; the installer formats the declared disk through this
-same layout, plants the key at `keyDestination`, and reboots into the installed system.
+same layout, fills the slot the layout provides with the same files, and reboots into the
+installed system — which finds them exactly where it would have, had the image written
+the slot.

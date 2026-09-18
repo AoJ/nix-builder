@@ -1,14 +1,20 @@
 # action-install — install a system onto its target from a RAM install environment.
 #
-#   action-install <createScript> <mountScript> <toplevel> <keyDest> <storage> <pool> \
-#     <encrypted> <poolKeyDest> <disk>...
+#   action-install <createScript> <mountScript> <toplevel> <slotName> <slotFiles> \
+#     <storage> <pool> <encrypted> <disk>...
 #
 # createScript brings the target's storage into existence AND mounts it at /mnt (disko's
 # create, or an equivalent). mountScript mounts an already-present target at /mnt — the
 # never-reformat probe. The disks are the block devices the target lives on: wiped before a
-# create, never touched on the mount path. The caller pre-delivers /run/sops.age (the
-# installed system's age key, optional) and, for an encrypted pool, /tmp/zfs_root_key
-# (createScript reads it; poolKeyDest is where a copy lands on the target, empty for none).
+# create, never touched on the mount path.
+#
+# The SLOT is the only thing this carries: the caller lays the installer's own slot out at
+# /run/slot, the host's own storage scripts read from there whatever they need, and the act
+# copies the same files into the partition named slotName on the target — so the installed
+# system finds its secrets exactly where it would have, had the image written the slot.
+# Nothing here reads a file's content or knows what any of them are for; slotFiles lists
+# the paths the host said would be there, and arrival is all that is checked.
+#
 # install_wipe=yes is the caller's explicit reinstall intent: the create path is taken and
 # the declared disks are cleared even when a target is already present.
 set -euo pipefail
@@ -16,17 +22,17 @@ set -euo pipefail
 create=${1:-}
 mounts=${2:-}
 toplevel=${3:-}
-key_dest=${4:-}
-storage=${5:-}
-pool=${6:-}
-encrypted=${7:-}
-pool_key_dest=${8:-}
+slot_name=${4:-}
+slot_files=${5:-}
+storage=${6:-}
+pool=${7:-}
+encrypted=${8:-}
 
-[ "$#" -ge 9 ] || fatal "usage: action-install <create> <mount> <toplevel> <keyDest>" \
-  "<storage> <pool> <encrypted> <poolKeyDest> <disk>..."
+[ "$#" -ge 9 ] || fatal "usage: action-install <create> <mount> <toplevel> <slotName>" \
+  "<slotFiles> <storage> <pool> <encrypted> <disk>..."
 shift 8
 disks=("$@")
-required create mounts toplevel key_dest storage encrypted
+required create mounts toplevel slot_name slot_files storage encrypted
 [ "$storage" != zfs ] || required pool
 [ "$encrypted" = true ] || [ "$encrypted" = false ] \
   || fatal "encrypted must be true or false, got '$encrypted'"
@@ -46,15 +52,17 @@ install_reserve_bytes=${install_reserve_bytes:-1073741824}
 #      A memory-rooted installer holds no disk and passes vacuously.
 #   3. The carried closure fits the declared capacity: otherwise nixos-install hits
 #      ENOSPC after the format — exactly the mid-flight failure the gate exists to stop.
-#   4. An encrypted target's pool passphrase was actually delivered: without it the create
-#      would fail AFTER the wipe — a disk destroyed for nothing.
+#   4. Everything the host said its slot carries actually arrived: an installer nobody
+#      personalized must not wipe a disk and discover it afterwards. What the files ARE
+#      is never looked at — only that they are there.
 capability_gate() {
   local disk dev typ sz capacity=0
-  local tmp_req tmp_du closure_bytes required
-  if [ "$encrypted" = true ] && [ ! -f /tmp/zfs_root_key ]; then
-    fatal "this host expects an ENCRYPTED pool but no pool passphrase was delivered" \
-      "— refusing before any wipe"
-  fi
+  local tmp_req tmp_du closure_bytes required want
+  while IFS= read -r want; do
+    [ -n "$want" ] || continue
+    [ -e "/run/slot$want" ] || fatal "the slot carries no $want — this installer was" \
+      "never personalized; refusing before any wipe"
+  done < "$slot_files"
   for disk in "${disks[@]}"; do
     dev=$(readlink -f "$disk") || fatal "cannot resolve declared disk $disk"
     [ -b "$dev" ] || fatal "declared disk $disk is absent — refusing before any format"
@@ -139,22 +147,47 @@ prepare_target() {
   fi
 }
 
-place_sops_key() {
-  if [ -f /run/sops.age ]; then
-    info "placing sops age key -> /mnt$key_dest"
-    install -D -m600 /run/sops.age "/mnt$key_dest"
-  else
-    info "no /run/sops.age delivered -> skipping sops key"
+# The target's slot: the partition the host's layout named, found among the DECLARED disks
+# so a same-named partition on the installer's own medium cannot be mistaken for it. The
+# files go in as they came; this runs before nixos-install, so anything the installed
+# system builds from them (an initrd secret, say) sees them already in place.
+place_slot() {
+  local disk dev part label target="" mnt="" own=no sc=0
+  if [ -z "$(find /run/slot -mindepth 1 -maxdepth 1 -print -quit 2> /dev/null)" ]; then
+    info "the slot carries nothing -> the target's slot stays as the layout made it"
+    return 0
   fi
-}
+  for disk in "${disks[@]}"; do
+    dev=$(readlink -f "$disk") || fatal "cannot resolve declared disk $disk"
+    while IFS= read -r part; do
+      sc=0
+      label=$(timeout 30 lsblk -nlo PARTLABEL --nodeps "$part") || sc=$?
+      [ "$sc" = 0 ] || continue
+      [ "$label" = "$slot_name" ] || continue
+      target=$part
+      break
+    done < <(timeout 30 lsblk -npo PATH "$dev" | tail -n +2)
+    [ -z "$target" ] || break
+  done
+  [ -n "$target" ] || fatal "the target declares no partition named $slot_name," \
+    "so the installed system would have no slot to read its secrets from"
 
-# The boot-time pool key: the same delivery place_sops_key does, to the destination the
-# host's layout declared. It runs before install_system, so the bootloader step can carry
-# the key wherever the layout points the pre-unlock read at.
-place_pool_key() {
-  [ -n "$pool_key_dest" ] || return 0
-  info "placing pool key -> /mnt$pool_key_dest"
-  install -D -m600 /tmp/zfs_root_key "/mnt$pool_key_dest"
+  # A host whose storage scripts already mounted its slot under /mnt keeps that mount:
+  # anything the install itself builds from the slot — an initrd secret, say — reads it
+  # through the host's own path, and a second mount of the same partition would hide the
+  # files from exactly the step that needs them. findmnt exits nonzero when nothing is
+  # mounted, which is a normal answer here and must not end the script through errexit.
+  sc=0
+  mnt=$(timeout 30 findmnt -nro TARGET --first-only --source "$target") || sc=$?
+  if [ "$sc" != 0 ] || [ -z "$mnt" ]; then
+    own=yes
+    mnt=$(mktemp -d)
+    add_cleanup "rmdir '$mnt' 2> /dev/null || true"
+    run "mount the target's slot" timeout 60 mount "$target" "$mnt"
+  fi
+  cp -a /run/slot/. "$mnt/"
+  [ "$own" = no ] || run "unmount the target's slot" timeout 60 umount "$mnt"
+  info "slot placed on $target at $mnt"
 }
 
 install_system() {
@@ -178,11 +211,10 @@ teardown() {
   fi
 }
 
-info "action-install starting: storage=$storage${pool:+ pool=$pool} system=$toplevel"
+info "action-install starting: storage=$storage${pool:+ pool=$pool} slot=$slot_name"
 capability_gate
 prepare_target
-place_sops_key
-place_pool_key
+place_slot
 install_system
 teardown
 info "action-install done — $storage installed cleanly"

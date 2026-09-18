@@ -39,6 +39,16 @@ rec {
   recordFor = { pkgs, ... }@args:
     (mk { inherit pkgs; }).recordFor (removeAttrs args [ "pkgs" ]);
 
+  # Paths blocks OWNS and publishes, so a host reads them from here instead of hardcoding
+  # a string both sides have to keep guessing right. They are ours, inside our own
+  # environment — what happens on the host's own filesystem is the host's to name.
+  paths = {
+    # Where the install action lays the slot's files out while it runs, for a host's own
+    # storage scripts to read (a pool passphrase, say — blocks never learns which file is
+    # which).
+    installSlot = "/run/slot";
+  };
+
   # An evaluated nixosSystem in, the variant data a host record carries out. The front
   # door calls it for you; it is here for a consumer assembling a record by hand.
   extract = import ./extract.nix;

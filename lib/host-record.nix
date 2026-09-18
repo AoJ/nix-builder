@@ -131,9 +131,10 @@ in
 
     secrets = mkOption {
       description = ''
-        How this host's secrets reach it. NOTHING here produces a secret: the builder never
-        generates a key, and no secret ever enters the store. The host states which
-        deliveries it uses and where the files will be READ FROM when a runner runs.
+        What lands in the slot. The slot is a FOLDER for this host's secrets: what they
+        are, what they are for and what format they are in is the host's business —
+        blocks carry the bytes to the declared place and never read them. Nothing here
+        produces a secret either; the builder generates no keys.
       '';
       type = types.submodule {
         options = {
@@ -150,45 +151,63 @@ in
           };
           files = mkOption {
             default = [ ];
-            description = "What lands in the slot (phase 2) and in a sidecar.";
+            description = "What lands in the slot (phase 2), and what a sidecar carries.";
             type = types.listOf (types.submodule {
               options = {
                 target = mkOption {
                   type = types.strMatching "/.*";
-                  description = "Where the file lands INSIDE the slot or sidecar.";
-                };
-                source = mkOption {
-                  type = types.str;
                   description = ''
-                    Where phase 2 reads the file from: a path on the machine running the
-                    personalize runner, resolved THEN — not a store path, not a derivation,
-                    and not something this repo creates. The host's age identity is
-                    generated outside (`age-keygen`), its sops bundle is encrypted to that
-                    identity's public half, and a deploy drops both here at run time.
+                    Where the file lands INSIDE the slot — never a path on the host's own
+                    filesystem. Reaching into a host's storage topology is not blocks' to
+                    do: the host mounts its slot where it likes and reads from there.
                   '';
                 };
-                runtimeSource = mkOption {
-                  type = types.str;
-                  description = "The same file for the SIDECAR producer; usually identical to source.";
+                mode = mkOption {
+                  type = types.strMatching "0[0-7][0-7][0-7]";
+                  default = "0400";
+                  description = ''
+                    The file's permissions, honoured wherever the medium can carry them
+                    (an initrd segment can, and the install action's staging does). A vfat
+                    slot has no per-file permissions at all — there the host's mount
+                    options decide, and this is advisory.
+                  '';
+                };
+                content = mkOption {
+                  description = ''
+                    Where the bytes come from — exactly one form, and blocks never looks
+                    at what they mean.
+                  '';
+                  type = types.submodule {
+                    options = {
+                      text = mkOption {
+                        type = types.nullOr types.str;
+                        default = null;
+                        description = ''
+                          The bytes, declared in nix. They are in the store from that
+                          moment, so this is for material that is ALREADY encrypted — a
+                          sops bundle a host carries in its own data, say.
+                        '';
+                      };
+                      env = mkOption {
+                        type = types.nullOr types.str;
+                        default = null;
+                        description = ''
+                          The name of an environment variable the runner reads when it
+                          RUNS. For plaintext material: nothing is written to the store,
+                          and the caller needs no file on disk — which is what a deploy
+                          running straight from a flake has.
+                        '';
+                      };
+                      file = mkOption {
+                        type = types.nullOr types.str;
+                        default = null;
+                        description = "A path the runner reads when it runs, for a caller that does have a file.";
+                      };
+                    };
+                  };
                 };
               };
             });
-          };
-          bundle = mkOption {
-            type = types.nullOr types.str;
-            default = null;
-            description = ''
-              The host's sops bundle, as a runtime path. Setting it turns on phase 2's
-              recipient check: the key being planted must have its public half among this
-              bundle's recipients, or the run refuses before touching the artifact —
-              because the alternative is a machine that boots unable to decrypt anything.
-              Null means no such check.
-            '';
-          };
-          keyTarget = mkOption {
-            type = types.nullOr (types.strMatching "/.*");
-            default = null;
-            description = "Which `files` target IS the age identity — what the recipient check verifies. Required alongside `bundle`.";
           };
         };
       };
@@ -239,20 +258,6 @@ in
               a refusal criterion: an encrypted host whose pool passphrase was not
               delivered is stopped BEFORE any wipe, since the create would otherwise fail
               with the disk already cleared.
-            '';
-          };
-          keyDestination = mkOption {
-            type = types.str;
-            description = "Where the host's age identity lands on the installed system.";
-          };
-          poolKeyDestination = mkOption {
-            type = types.nullOr types.str;
-            default = null;
-            description = ''
-              Where the install delivers the pool passphrase on the target, for the
-              layout's boot-time unlock to read. Where it must sit to be readable BEFORE
-              the pool unlocks is the layout's business (an initrd secret, typically);
-              null delivers nothing.
             '';
           };
           report = mkOption {

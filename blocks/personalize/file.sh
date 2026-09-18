@@ -1,7 +1,7 @@
 # personalize-file — fill a formatted slot FILE inside a finished iso9660 image. The offset
 # is read OUT of the artifact (report_lba), never bookkept at build time.
 #   $1 = the artifact (an iso)
-# Prepended by the block: slot_path, manifest (`<source>\t<target>` lines).
+# Prepended by the block: slot_path, manifest, and the resolver.
 set -euo pipefail
 
 artifact=${1:?usage: personalize <artifact>}
@@ -17,15 +17,13 @@ off=$((lba * 2048))
 mdir -i "$artifact@@$off" :: > /dev/null 2>&1 \
   || fatal "refusal: the file at $slot_path holds no filesystem"
 
-while IFS=$'\t' read -r src dest; do
-  [ -n "$src" ] || continue
-  [ -e "$src" ] || fatal "refusal: no such file to place: $src"
-done < "$manifest"
+staged=$(mktemp -d)
+add_cleanup rm -rf "$staged"
+stage_manifest "$manifest" "$staged"
 
-while IFS=$'\t' read -r src dest; do
-  [ -n "$src" ] || continue
-  run "place $dest" mcopy -o -i "$artifact@@$off" "$src" "::$dest"
-  mcopy -i "$artifact@@$off" "::$dest" - | cmp - "$src" \
-    || fatal "read-back mismatch: $dest"
-done < "$manifest"
+while IFS= read -r target; do
+  run "place $target" mcopy -o -i "$artifact@@$off" "$staged$target" "::$target"
+  mcopy -i "$artifact@@$off" "::$target" - | cmp - "$staged$target" \
+    || fatal "read-back mismatch: $target"
+done < <(manifest_targets "$manifest")
 info "personalized $artifact"

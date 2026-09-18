@@ -40,31 +40,38 @@ let
     storePlacement = null;
   });
 
-  # The throwaway key IS the planted file, so the whole chain is real: the runner derives
-  # its public half and matches it against the bundle's recipients before anything lands.
-  files = [ { target = "/sops.age"; source = "${fixture}/host.key"; } ];
+  # The block carries BYTES to a name and never looks at either: what a caller calls its
+  # files, and what they are for, is the caller's business. The three content forms are
+  # what a caller has — a file it points at, bytes it declared, a variable it exports.
+  files = [ { target = "/sops.age"; content.file = "${fixture}/host.key"; } ];
 
   # The consumer validates what it RECEIVED: the descriptors come from image's out,
   # never restated by hand.
   runFor = args: lib.getExe (personalize ({ name = "fixture"; inherit files; } // args)).run;
-  onPartition = runFor {
-    slot = slotted.slot;
-    recipientCheck = { bundle = "${fixture}/bundle.yaml"; keyTarget = "/sops.age"; };
-  };
-  onFile = runFor {
-    slot = slottedIso.slot;
-    recipientCheck = { bundle = "${fixture}/bundle.json"; keyTarget = "/sops.age"; };
-  };
+  onPartition = runFor { slot = slotted.slot; };
+  onFile = runFor { slot = slottedIso.slot; };
   onInitrd = runFor { slot = tree.slot; };
-  foreignKey = runFor {
+  everyForm = lib.getExe (personalize {
+    name = "fixture";
     slot = slotted.slot;
-    recipientCheck = { bundle = "${fixture}/bundle-foreign.yaml"; keyTarget = "/sops.age"; };
-  };
-  unreadable = runFor {
+    files = [
+      { target = "/from-file"; content.file = "${fixture}/host.key"; }
+      { target = "/from-text"; content.text = "declared in nix\n"; }
+      { target = "/from-env"; content.env = "FIXTURE_SECRET"; }
+    ];
+  }).run;
+  missingFile = runFor {
     slot = slotted.slot;
-    recipientCheck = { bundle = "${fixture}/garbage"; keyTarget = "/sops.age"; };
+    files = [ { target = "/sops.age"; content.file = "/nowhere/at/all"; } ];
   };
+  bothForms = builtins.tryEval (personalize {
+    name = "fixture";
+    slot = slotted.slot;
+    files = [ { target = "/x"; content = { text = "a"; env = "B"; }; } ];
+  }).run.drvPath;
 in
+assert lib.assertMsg (!bothForms.success)
+  "a file declaring two content forms must be refused at eval";
 pkgs.runCommand "test-personalize"
   { nativeBuildInputs = [
       pkgs.mtools pkgs.gptfdisk pkgs.xorriso pkgs.cpio pkgs.coreutils pkgs.jq
@@ -83,17 +90,27 @@ pkgs.runCommand "test-personalize"
     echo "== phase one stayed secret-free: the pristine artifact does not hold the key =="
     ! mdir -b -i ${slotted.file}@@"$off" :: | grep -q sops.age
 
-    echo "== refusal: another host's bundle — the key is NOT planted =="
-    install -m 0644 ${slotted.file} foreign.img
-    ! ${foreignKey} foreign.img 2> refusal-key.log
-    grep -q 'not a recipient' refusal-key.log
-    cmp foreign.img ${slotted.file}
+    echo "== every content form lands, and env is read at RUN time, not eval =="
+    install -m 0644 ${slotted.file} forms.img
+    FIXTURE_SECRET='from the environment' ${everyForm} forms.img
+    mcopy -i forms.img@@"$off" ::/from-file f1
+    cmp f1 ${fixture}/host.key
+    mcopy -i forms.img@@"$off" ::/from-text f2
+    printf 'declared in nix\n' | cmp - f2
+    mcopy -i forms.img@@"$off" ::/from-env f3
+    printf 'from the environment' | cmp - f3
 
-    echo "== refusal: a bundle the check cannot read is NAMED, not skipped =="
-    install -m 0644 ${slotted.file} unread.img
-    ! ${unreadable} unread.img 2> refusal-read.log
-    grep -q 'cannot read recipients' refusal-read.log
-    cmp unread.img ${slotted.file}
+    echo "== refusal: an env form whose variable is unset, artifact untouched =="
+    install -m 0644 ${slotted.file} unset.img
+    ! ${everyForm} unset.img 2> refusal-env.log
+    grep -q 'carries no FIXTURE_SECRET' refusal-env.log
+    cmp unset.img ${slotted.file}
+
+    echo "== refusal: a file form pointing nowhere, artifact untouched =="
+    install -m 0644 ${slotted.file} missing.img
+    ! ${missingFile} missing.img 2> refusal-file.log
+    grep -q 'no such file to place' refusal-file.log
+    cmp missing.img ${slotted.file}
 
     echo "== refusal: no slot in the artifact — and NOTHING was written =="
     install -m 0644 ${bare.file} bare.img

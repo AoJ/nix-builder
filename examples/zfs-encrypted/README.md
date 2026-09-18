@@ -12,29 +12,38 @@ other secret does.
 | step | who does it | where it lives |
 |---|---|---|
 | the passphrase is generated | you, once, into your vault | never in the store, never in an artifact on disk |
-| it enters the declaration | `secrets.files` — one more file in the same `embedded` delivery | `/run/secrets/example-zfs-enc/pool.pass` at phase-2 time |
+| it enters the declaration | `secrets.files` — one more file in the same delivery, named by this host | `content.file` here; a deploy holding it in a variable would say `content.env` |
 | phase 2 writes it | the personalize runner | the installer artifact's slot, beside the host key |
-| the installer reads it | its slot-key service, at boot | `/tmp/zfs_root_key` in RAM |
-| the pool is created with it | `install.prepare` | as the pool's passphrase — `keyformat=passphrase` |
-| the act delivers it | `install.poolKeyDestination` | `/var/keys/pool.key` on the installed system |
-| the bootloader carries it | `boot.initrd.secrets` in the host's own configuration | inside the initrd on the ESP |
+| the installer lays the slot out | the install act | `builder.lib.paths.installSlot` — the builder's own path, in RAM |
+| the pool is created with it | this host's `install.prepare` | `keylocation=file://${installSlot}/pool.pass`, then repointed at the initrd path |
+| the act fills the target's slot | the install act | the partition named `slotName` in this host's layout |
+| the bootloader carries it | `boot.initrd.secrets`, reading this host's own slot mount | inside the initrd on the ESP |
 | stage 1 unlocks with it | zfs, because `keylocation` names that initrd path | — |
 
-Three of those lines are declarations you make, and they must agree: the file in
-`secrets.files`, `install.poolKeyDestination`, and the `keylocation` + `boot.initrd.secrets`
-pair in the configuration. [`host.nix`](host.nix) binds them through two `let` values
-(`poolKeyTarget`, `poolKeyInitrd`) so the agreement is visible in one place.
+**Nothing in that chain tells the builder what the file is.** It carries bytes to a name
+this host chose; every line that knows `pool.pass` is a passphrase is this host's own —
+its `prepare`, its slot mount, its `boot.initrd.secrets`. [`host.nix`](host.nix) binds
+them through two `let` values (`slotMount`, `poolKeyInitrd`) so the agreement is visible
+in one place.
+
+One ordering constraint worth knowing: the bootloader step that bakes the initrd secret
+runs **during** `nixos-install`, so this host's `prepare` mounts its slot under `/mnt`
+before that — and the act, finding the partition already mounted, fills it there rather
+than mounting it a second time.
 
 There is no prompt anywhere, deliberately: full automation is the goal, and a host that
 wants an interactive unlock changes its layout, not its delivery.
 
 ## What `encrypted = true` buys you
 
-It is a refusal criterion, not decoration. An encrypted host whose passphrase was never
-delivered — an installer nobody personalized — is stopped **before any wipe**, because
-the alternative is a `zpool create` that fails with the disk already cleared. The same
-declaration also makes the act refuse a mismatch: an encrypted host finding a plain pool,
-or the reverse, stops rather than silently landing on the wrong thing.
+It makes the act refuse a mismatch: an encrypted host finding a plain pool, or the
+reverse, stops rather than silently landing on the wrong thing.
+
+The other refusal needs no such declaration and protects every host: the act checks that
+the files this host said its slot carries actually **arrived**, before anything
+destructive. An installer nobody personalized is therefore stopped before any wipe,
+rather than clearing a disk and failing the create for want of a passphrase — and the
+check never looks at what any of those files are.
 
 ## What it costs, honestly
 

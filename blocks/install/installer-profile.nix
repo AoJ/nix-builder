@@ -4,8 +4,8 @@
 # the netboot face (kexec/ipxe), or the iso face keyed by the medium's label (iso). Its
 # hardware support is the HOST's declaration (the machine record) — it boots exactly where
 # the host boots, and carries nothing the host did not claim to need.
-{ name, prepare, mount, toplevel, pool, storage, encrypted, keyDestination
-, poolKeyDestination, rootMode, isoLabel, slotFace, disks, report, machine, actionInstall
+{ name, prepare, mount, toplevel, pool, storage, encrypted, slotName, slotFiles
+, rootMode, isoLabel, slotFace, disks, report, machine, actionInstall
 , netbootFace, isoFace }:
 
 { pkgs, lib, modulesPath, ... }:
@@ -14,6 +14,9 @@ let
     if report == null
     then "report_line() { :; }"
     else ''report_line() { ${lib.escapeShellArg report} "$@"; }'';
+  # What the host said its slot carries, by path — the act checks arrival, never content.
+  expectedSlotFiles = pkgs.writeText "${name}-slot-files"
+    (lib.concatMapStrings (f: "${f}\n") slotFiles);
 in
 {
   imports = [
@@ -58,8 +61,10 @@ in
 
   # The installer's OWN slot, whichever face delivered it: a partition beside its root
   # (disk wrapper), the iso's slot file, or the initrd-slot hand-over (memory wrapper).
-  # This feeds the install action's delivered-key convention.
-  systemd.services.slot-key = {
+  # Its contents are laid out at ONE published path and nothing here looks at what they
+  # are: the host's own storage scripts read what they need from there, and the act
+  # carries the same files to the target's slot.
+  systemd.services.slot = {
     wantedBy = [ "multi-user.target" ];
     before = [ "action-install.service" ];
     serviceConfig.Type = "oneshot";
@@ -67,29 +72,23 @@ in
     script = ''
       ${reportFn}
       deliver() {
-        if [ -s "$1/sops.age" ]; then
-          install -m 0600 "$1/sops.age" /run/sops.age
-          report_line "installer: install-time key taken from the slot"
-        fi
-        if [ -s "$1/pool.pass" ]; then
-          install -m 0600 "$1/pool.pass" /tmp/zfs_root_key
-          report_line "installer: pool passphrase taken from the slot"
-        fi
+        cp -a "$1"/. /run/slot/
+        report_line "installer: slot taken over ($(find /run/slot -type f | wc -l) files)"
       }
+      mkdir -p /run/slot /run/slot-src
+      chmod 0700 /run/slot
       ${
         if slotFace ? partlabel then ''
           dev=/dev/disk/by-partlabel/${slotFace.partlabel}
-          mkdir -p /run/slot
-          if mount -o ro "$dev" /run/slot 2>/dev/null; then
-            deliver /run/slot
-            umount /run/slot
+          if mount -o ro "$dev" /run/slot-src 2>/dev/null; then
+            deliver /run/slot-src
+            umount /run/slot-src
           fi
         '' else if slotFace ? path then ''
           file=${slotFace.mount}${slotFace.path}
-          mkdir -p /run/slot
-          if mount -o ro,loop "$file" /run/slot 2>/dev/null; then
-            deliver /run/slot
-            umount /run/slot
+          if mount -o ro,loop "$file" /run/slot-src 2>/dev/null; then
+            deliver /run/slot-src
+            umount /run/slot-src
           fi
         '' else ''
           [ -d ${slotFace.dir} ] && deliver ${slotFace.dir}
@@ -100,8 +99,8 @@ in
 
   systemd.services.action-install = {
     wantedBy = [ "multi-user.target" ];
-    after = [ "slot-key.service" ];
-    wants = [ "slot-key.service" ];
+    after = [ "slot.service" ];
+    wants = [ "slot.service" ];
     serviceConfig = {
       Type = "oneshot";
       StandardOutput = "journal+console";
@@ -132,9 +131,8 @@ in
         report_line "REINSTALL ${name}: wiping the declared disks first"
       fi
       install_wipe="$wipe" action-install ${lib.escapeShellArgs
-        ([ prepare mount toplevel keyDestination storage pool
+        ([ prepare mount toplevel slotName expectedSlotFiles storage pool
            (if encrypted then "true" else "false")
-           (if poolKeyDestination == null then "" else poolKeyDestination)
          ] ++ disks)} || fail
       report_line "INSTALL-OK ${name}"
       systemctl reboot

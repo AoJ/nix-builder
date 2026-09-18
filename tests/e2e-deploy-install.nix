@@ -1,7 +1,7 @@
 # The PRODUCTION install path, end to end: the zfs host's #image-kexec-install — the
 # memory-rooted installer wearing the netboot face, carrying the host's closure — is
 # personalized through its initrd slot and started the way a running kernel would start it
-# (-kernel/-initrd, no firmware). It takes the install-time key from the initrd-slot
+# (-kernel/-initrd, no firmware). It takes its slot from the initrd-slot
 # hand-over, creates the pool on the disk named by its stable identity, installs offline,
 # exports cleanly and reboots; the target disk then boots ALONE.
 { pkgs, compose, hosts }:
@@ -42,7 +42,7 @@ in
     echo "install qemu exited $sc" >&2
     mcopy -i result-a.img ::/log result-a 2>/dev/null || touch result-a
     echo "=== install result:" >&2; cat result-a >&2
-    grep -q "installer: install-time key taken from the slot" result-a
+    grep -q "installer: slot taken over" result-a
     grep -q "INSTALL-OK e2e-zfs" result-a
 
     echo "== phase B: the installed disk boots ALONE =="
@@ -62,7 +62,7 @@ in
     grep -q "E2E-BOOT-OK e2e-zfs" result-b
     grep -q "E2E-DB-OK" result-b
     pub="$(age-keygen -y ${fixture}/host.key)"
-    grep -q "E2E-INSTALLED-KEY $pub" result-b
+    grep -q "E2E-KEY $pub" result-b
 
     touch "$out"
   ''

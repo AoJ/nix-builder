@@ -120,10 +120,11 @@ let
       inherit (host) name system;
       toplevel = host.variants.runtime.toplevel;
       closure = [ host.variants.runtime.toplevel ];
-      inherit (host.install) prepare mount pool keyDestination disks report
-        encrypted poolKeyDestination;
+      inherit (host.install) prepare mount pool disks report encrypted;
       storage = host.variants.runtime.storage;
       machine = host.variants.runtime.machine;
+      slotName = slot.name;
+      slotFiles = map (f: f.target) host.secrets.files;
       inherit rootMode isoLabel;
       slotFace = tools.slotFace { format = faceFormat; inherit (slot) name; };
     }).system;
@@ -170,8 +171,6 @@ let
       (imageFor f "squashfs" "memory" installers.rawMemory "-install-inmemory" "initrd");
   }) [ "raw" "qcow2" ]);
 
-  sidecarFiles = map (f: { inherit (f) target; source = f.runtimeSource; }) host.secrets.files;
-
   personalizeFor = name: slot:
     if slot == null
     then {
@@ -187,30 +186,24 @@ let
     }
     else personalize {
       inherit name slot;
-      files = sidecarFiles;
-      recipientCheck =
-        if host.secrets.bundle == null then null
-        else if host.secrets.keyTarget == null
-        then throw ("host(${host.name}): secrets.bundle is declared but secrets.keyTarget"
-          + " is not — the recipient check cannot tell which file is the identity")
-        else { inherit (host.secrets) bundle keyTarget; };
+      inherit (host.secrets) files;
     };
 in
 
 runtimeEndpoints // installEndpoints // inmemoryInstallEndpoints // {
   image-secrets-vfat = secrets {
     inherit (host) name;
-    files = sidecarFiles;
+    inherit (host.secrets) files;
     sidecarFormat = "vfat";
   };
   image-secrets-iso = secrets {
     inherit (host) name;
-    files = sidecarFiles;
+    inherit (host.secrets) files;
     sidecarFormat = "iso";
   };
   image-secrets-json = secrets {
     inherit (host) name;
-    files = sidecarFiles;
+    inherit (host.secrets) files;
     sidecarFormat = "json";
   };
 

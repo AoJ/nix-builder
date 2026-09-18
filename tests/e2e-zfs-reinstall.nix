@@ -83,7 +83,9 @@ in
     # zdb -l exits nonzero over the missing tail labels (L2/L3 live at the partition's
     # end), so its exit is captured and the assertions run on what it printed.
     pool_label() {
-      part_start="$(sgdisk -i 2 target.img | awk '/^First sector/ { print $3 }')"
+      part_num="$(sgdisk -p target.img | awk '$NF == "zfs" { print $1 }')"
+      [ -n "$part_num" ]
+      part_start="$(sgdisk -i "$part_num" target.img | awk '/^First sector/ { print $3 }')"
       [ -n "$part_start" ]
       dd if=target.img of="$1" bs=512 skip="$part_start" count=8192 status=none
       sc=0

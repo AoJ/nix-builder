@@ -27,41 +27,50 @@ They are also runnable (`nix build`), but that is not the point of them.
 | the artifact name | `networking.hostName` |
 | the install recipe | disko's own create and mount scripts, and the layout's disk list |
 | the pool | the first component of a zfs root's dataset (`rpool/root` → `rpool`) |
-| `keyDestination` | sops-nix's `sops.age.keyFile`, when the host has sops-nix |
 
 | you state | why it cannot be read |
 |---|---|
 | `slotName` | it is a name, and the layout's partition label must say the same word |
-| `secrets.*` paths | runtime facts about the deploying machine, not properties of the host |
+| `secrets.files` | what belongs in the slot, and where its bytes come from — see below |
 | `install.prepare` / `mount` / `disks` | only when the layout is not disko — a hand-made zfs pool has no layout to read |
-| `install.encrypted`, `poolKeyDestination` | decisions about the pool, not statements the configuration makes |
+| `install.encrypted` | a decision about the pool, not a statement the configuration makes |
 
 Nothing is guessed. What cannot be derived is refused **by name** when something asks for
 it — and only then: a host with no install recipe keeps every other endpoint, and its
 `-install` ones say what is missing instead of vanishing from the set.
 
-## Where the secrets come from
+## The slot, and what goes in it
 
-**The builder never generates a key.** It carries, places and verifies them; producing
-them is the operator's, and the design keeps it that way so no secret can end up in the
-nix store. Concretely, once per host:
+The slot is a **folder for this host's secrets**. What they are, what they are for, and
+what format they are in is the host's business: the builder carries bytes to a name and
+never opens them. It also generates nothing — no keys, no passphrases — so no secret can
+originate in, or end up in, the nix store.
 
-    age-keygen -o host.key                 # the host's identity — keep it in your vault
-    age-keygen -y host.key                 # its public half: add as a sops recipient
-    sops --encrypt --age "$pub" secrets.yaml > bundle.yaml
+A host declares what its slot carries, and where each file's bytes come from:
 
-Then `secrets.files[].source` and `secrets.bundle` are the paths **where
-those files will be at the moment phase 2 runs** — on the machine doing the
-personalizing, not in the store, not in a derivation. The examples write them as
-`/run/secrets/<host>/…` because that is where a deploy typically drops them.
+```nix
+secrets.files = [
+  # already encrypted, so putting it in the store is fine — your own host data, say
+  { target = "/sops.json"; content.text = myHost.secretsBundle; }
+  # plaintext: read from the environment when the phase-2 runner RUNS. Nothing is
+  # written to the store, and the caller needs no file on disk — which is what a deploy
+  # running straight from a flake has.
+  { target = "/pool.pass"; mode = "0400"; content.env = "SRV_POOL_PASS"; }
+  # a path, for a caller that does have a file
+  { target = "/sops.age"; content.file = "/run/secrets/srv/host.key"; }
+];
+```
 
-What the builder guarantees in return: phase 2 refuses to plant a key whose public half
-is not a recipient of that host's `bundle`. Without that check a wrong key produces a
-machine that boots and cannot decrypt anything — often with nothing but a serial console
-to find out on.
+`target` is a path **inside the slot**, never on the host's own filesystem: reaching into
+a host's storage topology is not the builder's to do. Where the slot is mounted, and what
+reads it, the host decides — see [`zfs-encrypted/`](zfs-encrypted/), which unlocks its
+pool from a file it put in its own slot, under a name only it knows the meaning of.
 
-An encrypted-zfs host adds one more file to the same delivery (its pool passphrase); see
-[`zfs-encrypted/`](zfs-encrypted/) for the whole path from vault to unattended unlock.
+An `-install` artifact carries the same slot: the installer takes it over, the host's own
+storage scripts read whatever they need from the path the builder publishes
+(`builder.lib.paths.installSlot`) while the install runs, and the act then fills the slot
+the target's layout provides. So the installed system finds its secrets exactly where it
+would have, had the image written the slot.
 
 ## How they stay true
 

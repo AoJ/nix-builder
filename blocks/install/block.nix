@@ -71,15 +71,23 @@ in
       description = "Whether the target pool is encrypted — the storage layout's declaration (L3).";
     };
 
-    keyDestination = mkOption {
-      type = types.str;
-      description = "Where the installed system's key lands, once the target exists.";
+    slotName = mkOption {
+      type = types.strMatching "[a-z0-9][a-z0-9-]*";
+      description = ''
+        The slot's name, on BOTH sides: the installer reads its own, and fills the one the
+        target's layout provides under the same name. The installed system then finds its
+        secrets exactly where it would have, had the image written the slot.
+      '';
     };
 
-    poolKeyDestination = mkOption {
-      type = types.nullOr types.str;
-      default = null;
-      description = "Where the delivered pool key lands on the target, for the layout's boot-time unlock to read; null delivers nothing.";
+    slotFiles = mkOption {
+      type = types.listOf types.str;
+      default = [ ];
+      description = ''
+        What the host declared its slot carries, by path. The act checks they arrived
+        before it destroys anything — an installer nobody personalized must not wipe a
+        disk and find out afterwards. Their contents are never read.
+      '';
     };
 
     rootMode = mkOption {
@@ -129,16 +137,13 @@ in
         if config.encrypted && config.storage != "zfs"
         then throw ("install(${config.name}): encryption is the zfs layout's property (L3)"
           + " — storage=${config.storage} cannot declare it")
-        else if config.poolKeyDestination != null && !config.encrypted
-        then throw ("install(${config.name}): poolKeyDestination without an encrypted"
-          + " target delivers nothing")
         else config.encrypted;
       installer = import (pkgs.path + "/nixos/lib/eval-config.nix") {
         inherit (config) system;
         modules = [
           (import ./installer-profile.nix {
-            inherit (config) name prepare mount toplevel pool storage keyDestination rootMode
-              isoLabel slotFace disks report machine poolKeyDestination;
+            inherit (config) name prepare mount toplevel pool storage rootMode
+              isoLabel slotFace disks report machine slotName slotFiles;
             inherit encrypted;
             actionInstall = tools.actionInstall { inherit (config) storage; };
             inherit (tools) netbootFace isoFace;

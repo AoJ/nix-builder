@@ -49,8 +49,6 @@ let
         if storage != "zfs" then ""
         else lib.head (lib.splitString "/" rootFs.device);
 
-      sopsKeyFile = cfg.sops.age.keyFile or null;
-
       installFinal = {
         prepare = install.prepare or
           (if hasDisko then cfg.system.build.diskoScript else noRecipe "prepare");
@@ -60,11 +58,6 @@ let
           (if hasDisko then map (d: d.device) (lib.attrValues diskoDisks) else noRecipe "disks");
         pool = install.pool or derivedPool;
         encrypted = install.encrypted or false;
-        keyDestination = install.keyDestination or
-          (if sopsKeyFile != null then sopsKeyFile
-          else refuse ("install.keyDestination is unset and this host has no sops-nix"
-            + " keyFile to read it from — state where the host's identity lands"));
-        poolKeyDestination = install.poolKeyDestination or null;
         report = install.report or null;
       };
     in

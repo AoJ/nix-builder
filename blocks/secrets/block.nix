@@ -8,12 +8,22 @@ in
     name = mkOption { type = types.strMatching "[a-z0-9][a-z0-9-]*"; };
 
     files = mkOption {
-      # Paths as STRINGS, resolved when the runner runs: a secret in a derivation is a
-      # secret in the store, and a sidecar exists to carry secrets.
+      # What goes where, and where the bytes come from — never what they are. `text` is
+      # already in the store by the time it gets here; `env` and `file` are resolved when
+      # the runner runs, because a secret in a derivation is a secret in the store.
       type = types.listOf (types.submodule {
         options = {
           target = mkOption { type = types.strMatching "/.*"; };
-          source = mkOption { type = types.str; };
+          mode = mkOption { type = types.strMatching "0[0-7][0-7][0-7]"; default = "0400"; };
+          content = mkOption {
+            type = types.submodule {
+              options = {
+                text = mkOption { type = types.nullOr types.str; default = null; };
+                env = mkOption { type = types.nullOr types.str; default = null; };
+                file = mkOption { type = types.nullOr types.str; default = null; };
+              };
+            };
+          };
         };
       });
     };
@@ -37,15 +47,16 @@ in
 
   config.out =
     let
-      manifest = pkgs.writeText "${config.name}-sidecar-manifest"
-        (lib.concatMapStrings (f: "${f.source}\t${f.target}\n") config.files);
+      manifest = tools.secretManifest { inherit (config) name files; };
 
       volumeId = tools.ids.volumeId "${config.name}:sidecar";
 
       runner = script: vars: runtimeInputs: tools.bashTool {
         name = "sidecar-${config.name}";
         inherit runtimeInputs;
-        text = vars + builtins.readFile script;
+        text = vars
+          + builtins.readFile tools.secretResolve
+          + builtins.readFile script;
       };
 
       byFormat = {

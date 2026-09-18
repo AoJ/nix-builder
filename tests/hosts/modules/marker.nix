@@ -50,9 +50,6 @@
           e2e-record "E2E-KEY-EMPTY"
         fi
       fi
-      if [ -s /var/lib/sops/age.key ]; then
-        e2e-record "E2E-INSTALLED-KEY $(age-keygen -y /var/lib/sops/age.key)"
-      fi
       side=/dev/disk/by-label/SECRETS
       if [ -e "$side" ]; then
         mkdir -p /run/sidecar

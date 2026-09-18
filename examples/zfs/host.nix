@@ -38,17 +38,13 @@ builder.lib.imagesFor {
 
   secrets = {
     delivery = [ "embedded" "sidecar" ];
-    bundle = "/run/secrets/example-zfs/bundle.yaml";
-    keyTarget = "/sops.age";
     files = [{
       target = "/sops.age";
-      source = "/run/secrets/example-zfs/host.key";
-      runtimeSource = "/run/secrets/example-zfs/host.key";
+      content.file = "/run/secrets/example-zfs/host.key";
     }];
   };
 
   install = {
-    keyDestination = "/var/lib/sops/age.key";
     # The disks a create may clear. With a disko layout this comes from the layout; a
     # hand-written pool has to say it, and this is the only place that says it.
     disks = [ device ];
@@ -60,11 +56,13 @@ builder.lib.imagesFor {
       disk=${device}
       ${pkgs.gptfdisk}/bin/sgdisk -Z "$disk"
       ${pkgs.gptfdisk}/bin/sgdisk -n 1:0:+512M -t 1:ef00 -c 1:ESP "$disk"
-      ${pkgs.gptfdisk}/bin/sgdisk -n 2:0:0 -t 2:bf01 -c 2:zfs "$disk"
+      ${pkgs.gptfdisk}/bin/sgdisk -n 2:0:+8M -t 2:8300 -c 2:secrets "$disk"
+      ${pkgs.gptfdisk}/bin/sgdisk -n 3:0:0 -t 3:bf01 -c 3:zfs "$disk"
       ${pkgs.systemd}/bin/udevadm settle
       ${pkgs.dosfstools}/bin/mkfs.fat -F 32 -n ESP "''${disk}-part1"
+      ${pkgs.dosfstools}/bin/mkfs.fat -n SLOT "''${disk}-part2"
       zpool create -f -o ashift=12 -O mountpoint=none -O compression=on \
-        ${pool} "''${disk}-part2"
+        ${pool} "''${disk}-part3"
       zfs create -o mountpoint=legacy ${pool}/root
       mkdir -p /mnt
       mount -t zfs ${pool}/root /mnt

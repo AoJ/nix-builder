@@ -1,22 +1,23 @@
-# An encrypted zfs host — the plain zfs example plus the key's whole path. Encryption
-# follows the install (law L3): no image is ever encrypted, and the pool is created at
-# install time with the REAL passphrase, delivered like any other secret.
+# An encrypted zfs host — the plain zfs example plus this host's own unlock story.
+# Encryption follows the install (law L3): no image is ever encrypted, and the pool is
+# created at install time with the real passphrase.
 #
-# Three declarations have to agree, and they are bound here through two values:
-#   pool.pass in secrets.files   the passphrase rides the same delivery as the host key;
-#                                an installer without it REFUSES before any wipe
-#   install.poolKeyDestination   where the act delivers it on the target
-#   keylocation + initrd secret  what stage 1 reads to unlock, unattended
-#
-# See README.md for the seven steps from vault to unlock.
+# Notice what blocks does NOT know here. It carries a file this host called `pool.pass`
+# into the slot and never opens it; this host's own scripts read it, off the path the
+# builder publishes (`builder.lib.paths.installSlot`) while the install runs. Where the
+# passphrase then lives on the installed machine, and how stage 1 gets at it, is this
+# host's layout — the slot partition, mounted where it likes.
 { pkgs, builder }:
 
 let
   device = "/dev/disk/by-id/virtio-main";
   pool = "rpool";
-  # The two ends of the key's journey on the target: where the install puts it, and the
-  # path inside the initrd that the pool's keylocation names.
-  poolKeyTarget = "/var/keys/pool.key";
+  slotName = "secrets";
+  # Published by the builder: where the install action lays the slot out while it runs.
+  inherit (builder.lib.paths) installSlot;
+  # This host's own choices: where its slot partition mounts once installed, and the
+  # initrd path stage 1 reads the passphrase from.
+  slotMount = "/var/lib/slot";
   poolKeyInitrd = "/pool.key";
 
   configuration = { modulesPath, ... }: {
@@ -34,10 +35,16 @@ let
     fileSystems."/boot" = { device = "/dev/disk/by-partlabel/ESP"; fsType = "vfat"; };
     boot.loader.systemd-boot.enable = true;
 
-    # The bootloader step copies this into the initrd at every generation, so the key is
-    # readable before the pool unlocks — and therefore sits in plaintext on the ESP.
-    # Whether that is protection enough is this host's call.
-    boot.initrd.secrets.${poolKeyInitrd} = poolKeyTarget;
+    # The slot the install filled, mounted where this host wants it.
+    fileSystems.${slotMount} = {
+      device = "/dev/disk/by-partlabel/${slotName}";
+      fsType = "vfat";
+      options = [ "ro" "umask=0077" ];
+    };
+    # The bootloader step copies the passphrase into the initrd at every generation, so
+    # stage 1 can read it before the pool unlocks — and it therefore sits in plaintext on
+    # the ESP. Whether that is protection enough is this host's call.
+    boot.initrd.secrets.${poolKeyInitrd} = "${slotMount}/pool.pass";
   };
 
   host = import (pkgs.path + "/nixos/lib/eval-config.nix") {
@@ -46,51 +53,40 @@ let
   };
 in
 builder.lib.imagesFor {
-  inherit pkgs host;
-  slotName = "secrets";
+  inherit pkgs host slotName;
 
-  # The passphrase is ONE MORE FILE in the same delivery — the bricks combine, there is no
-  # special channel for install-time secrets.
+  # The passphrase is ONE MORE FILE in the same delivery — the bricks combine, and blocks
+  # learns nothing about what either file is for.
   secrets = {
     delivery = [ "embedded" "sidecar" ];
-    bundle = "/run/secrets/example-zfs-enc/bundle.yaml";
-    keyTarget = "/sops.age";
     files = [
-      {
-        target = "/sops.age";
-        source = "/run/secrets/example-zfs-enc/host.key";
-        runtimeSource = "/run/secrets/example-zfs-enc/host.key";
-      }
-      {
-        target = "/pool.pass";
-        source = "/run/secrets/example-zfs-enc/pool.pass";
-        runtimeSource = "/run/secrets/example-zfs-enc/pool.pass";
-      }
+      { target = "/sops.age"; content.file = "/run/secrets/example-zfs-enc/host.key"; }
+      { target = "/pool.pass"; content.file = "/run/secrets/example-zfs-enc/pool.pass"; }
     ];
   };
 
   install = {
-    keyDestination = "/var/lib/sops/age.key";
     disks = [ device ];
-    # Not decoration: it makes an installer that was never given the passphrase refuse
-    # BEFORE any wipe, instead of failing the create with the disk already cleared.
+    # Not decoration: it makes an installer whose slot never received the declared files
+    # refuse BEFORE any wipe, instead of failing the create with the disk already cleared.
     encrypted = true;
-    poolKeyDestination = poolKeyTarget;
 
-    # The create consumes the delivered passphrase (the installer places it at
-    # /tmp/zfs_root_key), then repoints keylocation at the initrd path — the file the
-    # installed system's stage 1 will actually see.
+    # The layout: an ESP, the SLOT partition this host reads its secrets from, and the
+    # pool. The create takes the passphrase off the published install-slot path, then
+    # repoints keylocation at the initrd file the installed system will have.
     prepare = pkgs.writeShellScript "prepare-zfs-enc" ''
       set -euo pipefail
       disk=${device}
       ${pkgs.gptfdisk}/bin/sgdisk -Z "$disk"
       ${pkgs.gptfdisk}/bin/sgdisk -n 1:0:+512M -t 1:ef00 -c 1:ESP "$disk"
-      ${pkgs.gptfdisk}/bin/sgdisk -n 2:0:0 -t 2:bf01 -c 2:zfs "$disk"
+      ${pkgs.gptfdisk}/bin/sgdisk -n 2:0:+8M -t 2:8300 -c 2:${slotName} "$disk"
+      ${pkgs.gptfdisk}/bin/sgdisk -n 3:0:0 -t 3:bf01 -c 3:zfs "$disk"
       ${pkgs.systemd}/bin/udevadm settle
       ${pkgs.dosfstools}/bin/mkfs.fat -F 32 -n ESP "''${disk}-part1"
+      ${pkgs.dosfstools}/bin/mkfs.fat -n SLOT "''${disk}-part2"
       zpool create -f -o ashift=12 -O mountpoint=none -O compression=on \
         -O encryption=on -O keyformat=passphrase \
-        -O keylocation=file:///tmp/zfs_root_key ${pool} "''${disk}-part2"
+        -O keylocation=file://${installSlot}/pool.pass ${pool} "''${disk}-part3"
       zfs set keylocation=file://${poolKeyInitrd} ${pool}
       zfs create -o mountpoint=legacy ${pool}/root
       mkdir -p /mnt
@@ -100,12 +96,12 @@ builder.lib.imagesFor {
     '';
 
     # The never-reformat path over an encrypted pool: the on-disk keylocation names the
-    # initrd file, which does not exist in the installer — so load the delivered key
-    # explicitly, then mount.
+    # initrd file, which does not exist in the installer — so load the key explicitly off
+    # the slot, then mount.
     mount = pkgs.writeShellScript "mount-zfs-enc" ''
       set -euo pipefail
       zpool import ${pool}
-      zfs load-key -L file:///tmp/zfs_root_key ${pool}
+      zfs load-key -L file://${installSlot}/pool.pass ${pool}
       mkdir -p /mnt
       mount -t zfs ${pool}/root /mnt
       mkdir -p /mnt/boot

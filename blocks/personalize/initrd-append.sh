@@ -1,7 +1,7 @@
 # personalize-initrd — append the slot's files to a netboot payload's initrd as one more
 # cpio segment. The artifact must be the CALLER's writable copy — a store path is not one.
 #   $1 = the artifact (a netboot tree holding ./initrd)
-# Prepended by the block: slot_name, manifest (`<source>\t<target>` lines).
+# Prepended by the block: slot_name, manifest, and the resolver.
 set -euo pipefail
 
 artifact=${1:?usage: personalize <artifact>}
@@ -15,18 +15,9 @@ required slot_name manifest
 grep -aqF -- ".slot-$slot_name" "$artifact/initrd" \
   || fatal "refusal: the artifact carries no slot segment named $slot_name"
 
-while IFS=$'\t' read -r src dest; do
-  [ -n "$src" ] || continue
-  [ -e "$src" ] || fatal "refusal: no such file to place: $src"
-done < "$manifest"
-
 staged=$(mktemp -d)
 add_cleanup rm -rf "$staged"
-while IFS=$'\t' read -r src dest; do
-  [ -n "$src" ] || continue
-  mkdir -p "$staged$(dirname "$dest")"
-  cp "$src" "$staged$dest"
-done < "$manifest"
+stage_manifest "$manifest" "$staged"
 
 # A new segment must start 4-byte aligned or the kernel's parser stops at a misaligned
 # magic; zero padding between archives is what the format skips.
@@ -38,7 +29,7 @@ fi
 before=$(stat -c%s "$artifact/initrd")
 # The subshell restates the modes it needs: inherited options are one refactor away from
 # not being there, and a cpio that fails mid-pipeline must never leave a half-appended
-# initrd looking done.
+# initrd looking done. The staged modes ride along — a cpio segment can carry them.
 sc=0
 (
   set -euo pipefail
@@ -52,10 +43,9 @@ fi
 
 # cpio -t strips the leading "./" a find-fed archive stores, so the anchor is the bare
 # relative path.
-while IFS=$'\t' read -r src dest; do
-  [ -n "$src" ] || continue
+while IFS= read -r target; do
   tail -c +$((before + 1)) "$artifact/initrd" | cpio -t --quiet \
-    | grep -qxF "${dest#/}" \
-    || fatal "the appended segment does not list $dest"
-done < "$manifest"
+    | grep -qxF "${target#/}" \
+    || fatal "the appended segment does not list $target"
+done < <(manifest_targets "$manifest")
 info "personalized $artifact"

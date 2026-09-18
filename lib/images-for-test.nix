@@ -77,10 +77,9 @@ let
   # A derivation only refuses once something forces what is inside it.
   refusedBuild = v: !(builtins.tryEval (forced v)).success;
 
-  diskoRecord = record diskoHost { install.keyDestination = "/var/lib/sops/age.key"; };
+  diskoRecord = record diskoHost { };
   zfsRecord = record zfsHost {
     install = {
-      keyDestination = "/var/lib/sops/age.key";
       prepare = pkgs.writeShellScript "prepare" "true";
       mount = pkgs.writeShellScript "mount" "true";
       disks = [ device ];
@@ -117,8 +116,6 @@ assert lib.assertMsg
 
 assert lib.assertMsg (refused (record unknownHost { }).variants.runtime.storage)
   "an unrecognised root filesystem is refused, never guessed at";
-assert lib.assertMsg (refused (record diskoHost { }).install.keyDestination)
-  "without sops-nix to read it from, keyDestination must be stated";
 
 # A host with no install recipe keeps every other endpoint: the installers refuse when
 # ASKED FOR, and nothing else notices.

@@ -4,14 +4,25 @@ let
   inherit (pkgs) lib;
   secrets = import ./default.nix { inherit pkgs tools; };
 
-  fixture = pkgs.writeText "age-key-fixture" "AGE-SECRET-KEY-FIXTURE";
-  files = [ { target = "/sops.age"; source = "${fixture}"; } ];
+  fixture = pkgs.writeText "secret-fixture" "SOME-SECRET-FIXTURE";
+  files = [ { target = "/sops.age"; content.file = "${fixture}"; } ];
 
   runFor = args: lib.getExe (secrets ({ inherit files; } // args)).run;
   asVfat = runFor { name = "fixture"; sidecarFormat = "vfat"; };
   asIso = runFor { name = "fixture"; sidecarFormat = "iso"; };
   asJson = runFor { name = "fixture"; sidecarFormat = "json"; };
   elsewhere = runFor { name = "other"; sidecarFormat = "vfat"; };
+  # The same three content forms the slot takes: a sidecar is the other carrier of the
+  # same declaration.
+  everyForm = lib.getExe (secrets {
+    name = "forms";
+    sidecarFormat = "json";
+    files = [
+      { target = "/from-file"; content.file = "${fixture}"; }
+      { target = "/from-text"; content.text = "declared in nix\n"; }
+      { target = "/from-env"; content.env = "FIXTURE_SECRET"; }
+    ];
+  }).run;
 in
 pkgs.runCommand "test-secrets"
   { nativeBuildInputs = [ pkgs.mtools pkgs.xorriso pkgs.file pkgs.coreutils pkgs.jq ]; }
@@ -39,6 +50,17 @@ pkgs.runCommand "test-secrets"
     ${asVfat} again.img && cmp side.img again.img
     ${asIso} again.iso && cmp side.iso again.iso
     ${asJson} again.json && cmp side.json again.json
+
+    echo "== every content form reaches a sidecar, env read at RUN time =="
+    FIXTURE_SECRET='from the environment' ${everyForm} forms.json
+    jq -r '."/from-file"' forms.json | base64 -d | cmp - ${fixture}
+    jq -r '."/from-text"' forms.json | base64 -d | cmp - <(printf 'declared in nix\n')
+    jq -r '."/from-env"' forms.json | base64 -d | cmp - <(printf 'from the environment')
+
+    echo "== refusal: an unset variable, and nothing was written =="
+    ! ${everyForm} never.json 2> refusal-env.log
+    grep -q 'carries no FIXTURE_SECRET' refusal-env.log
+    [ ! -e never.json ]
 
     echo "== two names, two identities =="
     mine="$(file -b side.img | grep -o 'serial number 0x[0-9a-f]*')"

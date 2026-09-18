@@ -1,7 +1,7 @@
 # The third installer face, end to end: the zfs host's #image-iso-install — the installer
 # wearing the iso face, keyed by the label both sides derive from the artifact's name —
 # is personalized through the medium's slot FILE, boots from the medium under OVMF, takes
-# the install-time key from /iso, installs offline onto the disk named by its stable
+# its slot from /iso, installs offline onto the disk named by its stable
 # identity, exports cleanly and reboots; the target disk then boots ALONE.
 { pkgs, compose, hosts }:
 
@@ -39,7 +39,7 @@ in
     echo "install qemu exited $sc" >&2
     mcopy -i result-a.img ::/log result-a 2>/dev/null || touch result-a
     echo "=== install result:" >&2; cat result-a >&2
-    grep -q "installer: install-time key taken from the slot" result-a
+    grep -q "installer: slot taken over" result-a
     grep -q "INSTALL-OK e2e-zfs" result-a
 
     echo "== phase B: the installed disk boots ALONE =="
@@ -59,7 +59,7 @@ in
     grep -q "E2E-BOOT-OK e2e-zfs" result-b
     grep -q "E2E-DB-OK" result-b
     pub="$(age-keygen -y ${fixture}/host.key)"
-    grep -q "E2E-INSTALLED-KEY $pub" result-b
+    grep -q "E2E-KEY $pub" result-b
 
     touch "$out"
   ''

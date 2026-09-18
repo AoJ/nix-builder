@@ -1,11 +1,9 @@
 # personalize-partition — fill a formatted slot PARTITION in a finished disk image.
 #   $1 = the artifact (a raw disk image)
-# Prepended by the block: slot_name, manifest (`<source>\t<target>` lines).
+# Prepended by the block: slot_name, manifest, and the resolver.
 #
-# Every check runs before the first write: a private key written to the wrong offset is not
-# recoverable by noticing afterwards, so a refusal must leave the artifact untouched. The
-# read-back never touches the filesystem — a copy of a private key has no business in a
-# temp file.
+# Every check runs before the first write: a secret written to the wrong offset is not
+# recoverable by noticing afterwards, so a refusal must leave the artifact untouched.
 set -euo pipefail
 
 artifact=${1:?usage: personalize <artifact>}
@@ -29,15 +27,13 @@ off=$((start * 512))
 mdir -i "$artifact@@$off" :: > /dev/null 2>&1 \
   || fatal "refusal: the slot at sector $start holds no filesystem"
 
-while IFS=$'\t' read -r src dest; do
-  [ -n "$src" ] || continue
-  [ -e "$src" ] || fatal "refusal: no such file to place: $src"
-done < "$manifest"
+staged=$(mktemp -d)
+add_cleanup rm -rf "$staged"
+stage_manifest "$manifest" "$staged"
 
-while IFS=$'\t' read -r src dest; do
-  [ -n "$src" ] || continue
-  run "place $dest" mcopy -o -i "$artifact@@$off" "$src" "::$dest"
-  mcopy -i "$artifact@@$off" "::$dest" - | cmp - "$src" \
-    || fatal "read-back mismatch: $dest"
-done < "$manifest"
+while IFS= read -r target; do
+  run "place $target" mcopy -o -i "$artifact@@$off" "$staged$target" "::$target"
+  mcopy -i "$artifact@@$off" "::$target" - | cmp - "$staged$target" \
+    || fatal "read-back mismatch: $target"
+done < <(manifest_targets "$manifest")
 info "personalized $artifact"

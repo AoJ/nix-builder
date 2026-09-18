@@ -13,26 +13,23 @@ in
     };
 
     files = mkOption {
-      # Paths as STRINGS, resolved when the runner runs: a secret in a derivation is a
-      # secret in the store, so nothing here may pull the source into one.
+      # What goes where, and where the bytes come from. The block places them and never
+      # reads them: what a secret IS, and what it is for, is the host's business.
       type = types.listOf (types.submodule {
         options = {
           target = mkOption { type = types.strMatching "/.*"; };
-          source = mkOption { type = types.str; };
+          mode = mkOption { type = types.strMatching "0[0-7][0-7][0-7]"; default = "0400"; };
+          content = mkOption {
+            type = types.submodule {
+              options = {
+                text = mkOption { type = types.nullOr types.str; default = null; };
+                env = mkOption { type = types.nullOr types.str; default = null; };
+                file = mkOption { type = types.nullOr types.str; default = null; };
+              };
+            };
+          };
         };
       });
-    };
-
-    recipientCheck = mkOption {
-      # The block cannot know the host's bundle; the caller hands it over, and the runner
-      # then refuses a key whose public half is not among the bundle's recipients.
-      type = types.nullOr (types.submodule {
-        options = {
-          bundle = mkOption { type = types.str; };
-          keyTarget = mkOption { type = types.strMatching "/.*"; };
-        };
-      });
-      default = null;
     };
 
     out = mkOption {
@@ -49,19 +46,13 @@ in
 
   config.out.run =
     let
-      manifest = pkgs.writeText "${config.name}-personalize-manifest"
-        (lib.concatMapStrings (f: "${f.source}\t${f.target}\n") config.files);
-
-      recipientVars = ''
-        recipient_bundle=${lib.escapeShellArg (if config.recipientCheck == null then "" else config.recipientCheck.bundle)}
-        recipient_key_target=${lib.escapeShellArg (if config.recipientCheck == null then "" else config.recipientCheck.keyTarget)}
-      '';
+      manifest = tools.secretManifest { inherit (config) name files; };
 
       runner = script: vars: runtimeInputs: tools.bashTool {
         name = "personalize-${config.name}";
-        runtimeInputs = runtimeInputs ++ [ pkgs.age pkgs.yq-go pkgs.gnugrep ];
-        text = vars + recipientVars
-          + builtins.readFile ./recipient-check.sh
+        runtimeInputs = runtimeInputs ++ [ pkgs.coreutils ];
+        text = vars
+          + builtins.readFile tools.secretResolve
           + builtins.readFile script;
       };
     in
@@ -69,16 +60,16 @@ in
       partition = runner ./partition.sh ''
         slot_name=${lib.escapeShellArg config.slot.name}
         manifest=${manifest}
-      '' [ pkgs.coreutils pkgs.gawk pkgs.gptfdisk pkgs.mtools pkgs.diffutils ];
+      '' [ pkgs.gawk pkgs.gptfdisk pkgs.mtools pkgs.diffutils ];
 
       file = runner ./file.sh ''
         slot_path=${lib.escapeShellArg config.slot.path}
         manifest=${manifest}
-      '' [ pkgs.coreutils pkgs.gawk pkgs.xorriso pkgs.mtools pkgs.diffutils ];
+      '' [ pkgs.gawk pkgs.xorriso pkgs.mtools pkgs.diffutils ];
 
       initrd-append = runner ./initrd-append.sh ''
         slot_name=${lib.escapeShellArg config.slot.name}
         manifest=${manifest}
-      '' [ pkgs.coreutils pkgs.findutils pkgs.cpio ];
+      '' [ pkgs.findutils pkgs.cpio ];
     }.${config.slot.destination};
 }

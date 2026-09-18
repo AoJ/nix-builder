@@ -41,15 +41,13 @@ let
       delivery = [ "embedded" ];
       files = [{
         target = "/sops.age";
-        source = "/run/secrets/host.key";
-        runtimeSource = "/run/secrets/host.key";
+        content.file = "/run/secrets/host.key";
       }];
     };
     install = {
       prepare = pkgs.writeShellScript "prepare" "true";
       mount = pkgs.writeShellScript "mount" "true";
       disks = [ "/dev/disk/by-id/example" ];
-      keyDestination = "/var/lib/sops/age.key";
     };
   };
 
@@ -94,13 +92,32 @@ assert lib.assertMsg
   "encryption outside a zfs layout must be refused (L3)";
 
 assert lib.assertMsg
-  (refused phase2 (base // { secrets = base.secrets // { bundle = "/run/secrets/b.yaml"; }; }))
-  "a bundle without a keyTarget must be refused — the recipient check needs both";
+  (refused phase2 (base // {
+    secrets.delivery = [ "embedded" ];
+    secrets.files = [{ target = "/x"; content = { text = "a"; env = "B"; }; }];
+  }))
+  "a file naming two content forms must be refused — where its bytes come from is one answer";
+assert lib.assertMsg
+  (refused phase2 (base // {
+    secrets.delivery = [ "embedded" ];
+    secrets.files = [{ target = "/x"; content = { }; }];
+  }))
+  "a file naming no content form at all must be refused";
+assert lib.assertMsg
+  (refused phase2 (base // {
+    secrets.delivery = [ "embedded" ];
+    secrets.files = [{ target = "relative"; content.text = "a"; }];
+  }))
+  "a target that is not a path inside the slot must be refused";
 assert lib.assertMsg
   (accepted phase2 (base // {
-    secrets = base.secrets // { bundle = "/run/secrets/b.yaml"; keyTarget = "/sops.age"; };
+    secrets.delivery = [ "embedded" ];
+    secrets.files = [
+      { target = "/from-text"; content.text = "already encrypted, so the store is fine"; }
+      { target = "/from-env"; content.env = "SOME_VAR"; mode = "0440"; }
+    ];
   }))
-  "a bundle WITH its keyTarget is the recipient check's complete declaration";
+  "text and env are complete declarations — nothing on disk is needed to build with them";
 
 # The other half of laziness: a host is not made to invent what it never uses. The
 # appliance's endpoints are the image ones (its installers are L6 holes), and it states

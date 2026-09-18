@@ -39,16 +39,14 @@ Or wire it into your own flake — one evaluated NixOS system in, every endpoint
         inherit pkgs;
         host = self.nixosConfigurations.srv;   # your own evaluated system
         slotName = "secrets";
-        secrets = {
-          delivery = [ "embedded" ];
-          bundle = "/run/secrets/srv/bundle.yaml";
-          keyTarget = "/sops.age";
-          files = [{
-            target = "/sops.age";
-            source = "/run/secrets/srv/host.key";
-            runtimeSource = "/run/secrets/srv/host.key";
-          }];
-        };
+        # What goes in the slot, and where each file's bytes come from. `text` is declared
+        # in nix (so: already-encrypted material), `env` is read when the phase-2 runner
+        # RUNS, `file` is a path it reads then. The builder carries the bytes to the name
+        # you chose and never opens them.
+        secrets.files = [
+          { target = "/sops.json"; content.text = mySecretsBundle; }
+          { target = "/pool.pass"; mode = "0400"; content.env = "SRV_POOL_PASS"; }
+        ];
       };
     in
     {
@@ -70,7 +68,14 @@ Or wire it into your own flake — one evaluated NixOS system in, every endpoint
 
 The storage, the machine, the live variants, the install recipe and the disk list are
 read out of the configuration. What you state is what a configuration cannot know: the
-slot's name, and where the secrets will be when phase 2 runs.
+slot's name, and what belongs in it.
+
+**The slot is a folder for the host's secrets, and nothing more.** The builder never
+generates a key, never reads one, and does not know what any file in there is for — it
+carries bytes to the name you chose, at the mode you asked for. A `target` is a path
+inside the slot, never on the host's own filesystem; where the host mounts its slot and
+what reads it is the host's business. An `-install` artifact carries the same slot and
+fills the target's on the way through.
 
 Every host gets the same endpoint set; combinations a law forbids are named holes that
 refuse at eval (a zfs host's `image-raw`, a squashfs host's installers), never endpoints

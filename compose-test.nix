@@ -48,12 +48,9 @@ let
     };
     secrets = {
       delivery = [ "embedded" "sidecar" ];
-      bundle = "${fixture}/bundle.yaml";
-      keyTarget = "/sops.age";
       files = [{
         target = "/sops.age";
-        source = "${fixture}/host.key";
-        runtimeSource = "${fixture}/host.key";
+        content.file = "${fixture}/host.key";
       }];
     };
     install = {
@@ -61,8 +58,6 @@ let
       mount = pkgs.writeShellScript "mount" "mount /dev/target-root \"$1\"";
       pool = "rpool";
       encrypted = false;
-      keyDestination = "/var/lib/sops/age.key";
-      poolKeyDestination = null;
       disks = [ "/dev/target" ];
       report = null;
     };

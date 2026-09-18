@@ -40,10 +40,13 @@ in
     mcopy -i result.img ::/log result 2>/dev/null || touch result
     echo "=== result:" >&2; cat result >&2
 
-    grep -q "installer: install-time key taken from the slot" result
-    grep -q "installer: pool passphrase taken from the slot" result
+    grep -q "installer: slot taken over" result
     grep -q "E2E-POOL-ENCRYPTION aes-256-gcm" result
-    grep -q "INSTALL-OK e2e-zfs-enc" result
+    # The installer's own console, shown when the act refused or failed: the witness disk
+    # carries the verdict, the serial log carries the reason.
+    grep -q "INSTALL-OK e2e-zfs-enc" result || {
+      echo "=== installer console:" >&2; tail -n 60 install.log >&2; exit 1
+    }
 
     echo "== the encrypted target boots unattended — the delivered key unlocks the pool =="
     truncate -s 16M result-boot.img; mkfs.fat -n E2EOUT result-boot.img > /dev/null

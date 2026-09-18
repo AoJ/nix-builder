@@ -50,7 +50,7 @@ declaration picks it:**
 | shape | when | what reaches the machine |
 |---|---|---|
 | `image` | the host states no install script | its own disk image, written as it is — bit for bit what was tested, and it may hold any operating system at all |
-| `closure` | asked for outright | the store paths, from which the same disk is assembled on the machine, for a target whose real size only the machine knows |
+| `closure` | `install.payload = "assemble"` | the same disk's pieces, laid out on the machine — so the store partition takes the disk actually found, which is what a disk built ahead of time cannot do |
 | `script` | the host states one | the store paths, installed through the host's own recipe — for storage no image can hold, like a zfs pool |
 
 **An install replaces what is on the declared disks, every time.** It is not an upgrade:

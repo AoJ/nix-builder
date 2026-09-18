@@ -14,12 +14,14 @@ in
 
     payload = mkOption {
       description = ''
-        WHAT is delivered, in one of the two shapes a delivery can take. An `image` is a
+        WHAT is delivered, in one of the three shapes a delivery takes. An `image` is a
         finished disk written to the target as it is — the installed machine is then byte
         for byte what was tested, and what the image holds is none of this block's
         business: a NixOS host, another operating system, anything that boots. A `closure`
-        is the host's store paths, installed onto storage the target's own recipe creates
-        — which is what a layout blocks cannot build (a zfs pool) still needs.
+        is the same disk's pieces, laid out HERE, so the store partition is sized to the
+        disk actually found rather than to one guessed at build time. A `script` is the
+        host's own recipe for storage no image can hold (a zfs pool, whose identity is a
+        kernel object), and the only shape that hands control to something the host wrote.
       '';
       type = types.submodule {
         options = {

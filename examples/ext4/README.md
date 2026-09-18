@@ -26,6 +26,11 @@ the install script and the disk list from the disko layout, the live variants by
 decides how this host is delivered — through disko's own create script, rather than as a
 finished image.
 
+Drop the layout and this same host is delivered as its own disk image instead, written to
+the target as it is; add `install.payload = "assemble"` and that disk is laid out on the
+machine, with the store partition taking whatever the real disk turns out to be. One host,
+three ways of arriving — see [../README.md](../README.md).
+
 The disk id (`/dev/disk/by-id/virtio-main`) is the one value you must take from the real
 machine, and it is stated once — in [`layout.nix`](layout.nix), which is also what the
 install clears. Use a by-id name, never `/dev/sda`: a name that moves between boots is a

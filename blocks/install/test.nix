@@ -11,11 +11,10 @@ let
     name = "fixture";
     system = "x86_64-linux";
     payload = {
-      kind = "closure";
+      kind = "script";
       toplevel = target;
       storePaths = [ target pkgs.hello ];
       prepare = pkgs.writeShellScript "prepare" "sgdisk --zap-all /dev/target";
-      mount = pkgs.writeShellScript "mount" "zpool import rpool && mount -t zfs rpool/root /mnt";
     };
     pool = "rpool";
     storage = "zfs";

@@ -55,7 +55,6 @@ let
     };
     install = {
       prepare = pkgs.writeShellScript "prepare" "sgdisk --zap-all /dev/target";
-      mount = pkgs.writeShellScript "mount" "mount /dev/target-root \"$1\"";
       pool = "rpool";
       encrypted = false;
       disks = [ "/dev/target" ];

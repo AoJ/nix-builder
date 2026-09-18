@@ -131,10 +131,10 @@ let
       + " pool is a kernel object with its own identity, not bytes on a disk (L2). State"
       + " install.prepare, the script that creates it.")
     else if host.install.prepare != null then {
-      kind = "closure";
+      kind = "script";
       toplevel = host.variants.runtime.toplevel;
       storePaths = [ host.variants.runtime.toplevel ];
-      inherit (host.install) prepare mount;
+      inherit (host.install) prepare;
     } else {
       kind = "image";
       image = compressedImage runtimeEndpoints.image-raw.file;

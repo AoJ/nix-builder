@@ -6,16 +6,16 @@
 #   closure  store paths installed onto storage the target's own recipe creates, for a
 #            layout no image can hold (a zfs pool, whose identity is a kernel object).
 #
-#   action-install <createScript> <mountScript> <toplevel> <slotName> <slotFiles> \
+#   action-install <createScript> <toplevel> <slotName> <slotFiles> \
 #     <storage> <pool> <encrypted> <disk>...
 #
 # createScript brings the target's storage into existence AND mounts it at /mnt (disko's
-# create, or an equivalent). mountScript mounts an already-present target at /mnt — the
-# never-reformat probe. The disks are the block devices the target lives on: wiped before a
-# create, never touched on the mount path.
+# create, or an equivalent). The disks are the block devices the target lives on, and they
+# are CLEARED: an install replaces what is there, every time. Disks the host did not
+# declare are never touched.
 #
-# The image way takes `payload_image` and `payload_bytes` from the environment instead of
-# the create/mount pair, and never mounts the target at all.
+# The image way takes `payload_image` from the environment instead of the create script,
+# and never mounts the target at all.
 #
 # The SLOT is the only thing this carries: the caller lays the installer's own slot out at
 # /run/slot, the host's own storage scripts read from there whatever they need, and the act
@@ -24,22 +24,19 @@
 # Nothing here reads a file's content or knows what any of them are for; slotFiles lists
 # the paths the host said would be there, and arrival is all that is checked.
 #
-# install_wipe=yes is the caller's explicit reinstall intent: the create path is taken and
-# the declared disks are cleared even when a target is already present.
 set -euo pipefail
 
 create=${1:-}
-mounts=${2:-}
-toplevel=${3:-}
-slot_name=${4:-}
-slot_files=${5:-}
-storage=${6:-}
-pool=${7:-}
-encrypted=${8:-}
+toplevel=${2:-}
+slot_name=${3:-}
+slot_files=${4:-}
+storage=${5:-}
+pool=${6:-}
+encrypted=${7:-}
 
-[ "$#" -ge 9 ] || fatal "usage: action-install <create> <mount> <toplevel> <slotName>" \
+[ "$#" -ge 8 ] || fatal "usage: action-install <create> <toplevel> <slotName>" \
   "<slotFiles> <storage> <pool> <encrypted> <disk>..."
-shift 8
+shift 7
 disks=("$@")
 required slot_name slot_files storage
 payload_image=${payload_image:-}
@@ -59,25 +56,23 @@ if [ -n "$payload_image" ]; then
   esac
 else
   kind=closure
-  required create mounts toplevel encrypted
+  required create toplevel encrypted
   [ "$storage" != zfs ] || required pool
   [ "$encrypted" = true ] || [ "$encrypted" = false ] \
     || fatal "encrypted must be true or false, got '$encrypted'"
 fi
-install_wipe=${install_wipe:-no}
 
 # Filesystem headroom the target must hold beyond the closure: ESP, slot, metadata.
 install_reserve_bytes=${install_reserve_bytes:-1073741824}
 
-# THE CAPABILITY GATE, before even the probe: refuse up front what this install cannot do,
-# so nothing destructive ever starts. None of this is an eval fact — disk identities,
-# mounts and sizes exist only on the machine.
+# THE CAPABILITY GATE, before anything destructive: refuse up front what this install
+# cannot do. None of this is an eval fact — disk identities, mounts and sizes exist only on
+# the machine.
 #   1. Every declared disk exists and is a WHOLE disk: an absent member would otherwise
 #      surface as a mid-format failure — or a partial format of the members present.
 #   2. No declared disk carries the RUNNING system: a disk with mounts is the one we
-#      booted from, and the probe cannot be trusted to catch it — its mount path would
-#      mount a disk-rooted installer's own root at /mnt and "find" a present target.
-#      A memory-rooted installer holds no disk and passes vacuously.
+#      booted from. A memory-rooted installer holds no disk and passes vacuously, which is
+#      what lets an in-memory installer replace the very medium it started from.
 #   3. The carried closure fits the declared capacity: otherwise nixos-install hits
 #      ENOSPC after the format — exactly the mid-flight failure the gate exists to stop.
 #   4. Everything the host said its slot carries actually arrived: an installer nobody
@@ -159,58 +154,18 @@ zstdcat_to_disk() {
   zstd -dc "$1" | dd of="$2" bs=4M conv=fsync status=none
 }
 
+# An install REPLACES what is on the declared disks. There is no probe and no "the target
+# looks present, keep it": installing into storage that already holds a system produces a
+# mix of two — the store is overwritten, everything beside it survives, and nobody can say
+# what the machine then is. The disks the host declared are cleared, every time; disks it
+# did not declare are never touched.
 wipe_and_create() {
-  info "wiping ${disks[*]} and creating $storage (this formats the disks)"
+  info "clearing ${disks[*]} and creating $storage (this destroys what is on them)"
   run "wipe ${disks[*]}" action-wipe "${disks[@]}"
   # No timeout: create is a destructive, non-rerunnable write — killing it mid-flight
-  # manufactures exactly the half-written state the probe exists to prevent.
+  # manufactures exactly the half-written state that makes a disk unreadable to both the
+  # old system and the new.
   run "create $storage" "$create"
-}
-
-# Bring the target up at /mnt: never reformat what is already installed there — unless
-# the caller carries explicit reinstall intent, which takes the create path regardless of
-# what the probe would find. The intent runs AFTER the gate: refused means untouched even
-# for a reinstall.
-prepare_target() {
-  local enc
-  if [ "$install_wipe" = yes ]; then
-    wipe_and_create
-    return
-  fi
-  if [ "$storage" = zfs ]; then
-    # `zpool import` doubles as the probe — the pool is the thing that persists.
-    if timeout 120 zpool import -f "$pool" 2> /dev/null; then
-      # The found pool must MATCH the host's declaration. Continuing across the mismatch
-      # would land an encrypted host on a plain pool without a single error — refuse, and
-      # leave the pool as found; a reinstall is an explicit wipe, never an accident.
-      enc=$(timeout 30 zfs get -H -o value encryption "$pool") \
-        || fatal "cannot read encryption state of $pool"
-      if [ "$encrypted" = true ] && [ "$enc" = off ]; then
-        timeout 120 zpool export "$pool"
-        fatal "pool $pool exists UNENCRYPTED but this host expects an encrypted pool" \
-          "— wipe first to reinstall"
-      fi
-      if [ "$encrypted" = false ] && [ "$enc" != off ]; then
-        timeout 120 zpool export "$pool"
-        fatal "pool $pool exists ENCRYPTED but this host expects a plain pool" \
-          "— wipe first to reinstall"
-      fi
-      info "pool $pool already exists -> mounting (no reformat)"
-      timeout 120 zpool export "$pool"
-      run "mount $pool" "$mounts"
-    else
-      wipe_and_create
-    fi
-  else
-    # The mount script is the probe: it succeeds on an installed target, fails on a fresh
-    # disk. A failed probe is not all-or-nothing — it can leave a partial tree under /mnt —
-    # so the create path starts with the wipe's holder release, /mnt included.
-    if timeout 120 "$mounts" 2> /dev/null; then
-      info "$storage target already present -> mounting (no reformat)"
-    else
-      wipe_and_create
-    fi
-  fi
 }
 
 # The target's slot: the partition the host's layout named, found among the DECLARED disks
@@ -285,7 +240,7 @@ if [ "$kind" = image ]; then
   place_slot
   info "action-install done — the image is on the disk"
 else
-  prepare_target
+  wipe_and_create
   place_slot
   install_system
   teardown

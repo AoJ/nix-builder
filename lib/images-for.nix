@@ -50,7 +50,6 @@ let
 
       installFinal = {
         prepare = install.prepare or (if hasDisko then cfg.system.build.diskoScript else null);
-        mount = install.mount or (if hasDisko then cfg.system.build.mountScript else null);
         disks = install.disks or
           (if hasDisko then map (d: d.device) (lib.attrValues diskoDisks) else noDisks);
         pool = install.pool or derivedPool;

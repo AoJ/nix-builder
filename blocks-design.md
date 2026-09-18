@@ -88,9 +88,9 @@ Derived:
   for a `runtime.storage = squashfs` host is the runtime image itself, and its `-install`
   endpoints are holes the matrix names.
 - **L7 — an install's target is WHOLE disks, never a partition inside one (DECIDED, aoj
-  2026-09-16).** The act's two promises are disk-granular — a create clears exactly the
-  declared disks, and never-reformat protects everything else — and a target sharing a disk
-  with anything foreign would make both impossible to state. Installing into an existing
+  2026-09-16).** The act's two promises are disk-granular — an install clears exactly the
+  declared disks, and never touches one it was not given — and a target sharing a disk with
+  anything foreign would make both impossible to state. Installing into an existing
   partition is out of scope: a refused declaration, not a smaller install.
 
 ## The endpoint set — DECIDED
@@ -327,6 +327,22 @@ Wraps a host in an OS that unpacks it. Its output is a system, so it sits **befo
 and the `-install` half of the endpoint set is `image(install(host), format)`
 — the format does not know it is packing an installer.
 
+**An install is how a system GETS onto a machine, and nothing more (DECIDED, aoj
+2026-09-18).** It is a wrapper around an image: what reaches the target is the same artifact
+the image endpoints produce, and the format only decides how the machine is reached — a
+stick, an iso, a netboot, a kexec into a running kernel. It is also a takeover: the machine
+it lands on may have been running anything, or nothing this world knows about.
+
+**What is delivered comes in three shapes, and a host's own declaration picks one.** An
+`image` is a finished disk written as it is — what it holds is never inspected, so the same
+act delivers another operating system as well as a NixOS host, and what boots is bit for bit
+what was tested. A `closure` is the host's store paths, from which the same disk is assembled
+on the machine — for a target whose real size only the machine knows. A `script` is the
+host's own recipe for storage no image can hold, and it is the only shape that hands control
+to something the host wrote. A host that states a recipe gets `script`; a host that states
+none gets `image`; `closure` is asked for, because nothing in a configuration says the
+difference.
+
 **Its input is a closure, not a system**. Measured against what the current
 installer actually consumes — a disk-preparation step, a mount step, the toplevel, the pool name,
 and where the key lands — that is five extracted values rather than a configuration. The
@@ -339,31 +355,35 @@ the installing. The block builds the second and carries the first. **What gets i
 the host as it runs**: a live format on an `-install` endpoint shapes only the wrapper's
 packaging, never which closure is carried.
 
-Two SLOTS are in flight too, with different lifetimes, and one field cannot carry both: the
-installer's OWN slot — where the install-time key is read from, `image`'s input when the
-installer is packed — and the place the installed host's key lands on the target it just created,
-which is this block's `keyDestination` input. The contract keeps them apart.
+Two SLOTS are in flight too, with different lifetimes: the installer's OWN slot — what it
+reads while it runs, `image`'s input when the installer is packed — and the target's, which
+the act fills with those same files once the storage exists. Same name, same contents, two
+moments.
 
 **The install ACT.** Its contract: an install the
 machine cannot carry out is refused before anything destructive, and a refused target is left
 untouched — refusal is a fact of the machine (an absent disk, a disk carrying the running
 system, a capacity the carried closure cannot fit, an encrypted target whose passphrase was
-never delivered), never of eval. An installed target is
-never reformatted by accident — and is replaced on PURPOSE: with explicit reinstall intent
-the act deliberately overwrites any disk holding an existing system, bounded the same two
-ways as everything destructive here: only the disks the host declares, and never a disk the
-running system lives on. Only a create clears the declared disks — completely, and only ever
-those; any other disk comes through an install untouched. The key lands at its declared
-destination, the closure installs offline, and the teardown releases the target completely,
-so the installed system comes up on its own. An encrypted target's boot-time pool key is
-delivered the same way the host's own key is — onto the target, at the destination the
-host declares; nothing is generated on the target and nothing rides the store. Placing it
-where boot can read it before unlock is the host layout's business, not the act's.
+never delivered), never of eval. **An install REPLACES what is on the declared disks, every
+time.** The blast radius is the same two bounds as ever: only the disks the host declares,
+and never a disk the running system lives on. The closure installs offline, and the teardown
+releases the target completely, so the installed system comes up on its own. An encrypted
+target's boot-time pool key is delivered the same way every other secret is — into the slot
+the target's layout provides; nothing is generated on the target and nothing rides the
+store. Reading it from there before the pool unlocks is the host layout's business, not the
+act's.
+
+How the machine leaves the install is a choice, and one option is not like the others:
+handing straight over to what was just delivered is what a stick left in the machine cannot
+turn into a reinstall loop — firmware never looks at it again, so the next thing that runs
+is the installed system rather than the installer a second time. Going through firmware, or
+stopping and waiting for someone to pull that stick, stay available for machines that need
+them.
 
 The block's installer OS is a minimal system of the block's own whose one service runs the
-action against the block's inputs: `prepare` creates AND mounts, `mount` is the never-reformat
-probe, `disks` names what a create wipes, `storage` selects the zfs-specific probe and
-teardown — and is the only thing that puts zfs into the installer, kernel module and userland
+action against the block's inputs: the install script, when a host states one, creates the
+target's storage and mounts it, `disks` names what the act clears, `storage` selects the
+zfs-specific teardown — and is the only thing that puts zfs into the installer, kernel module and userland
 both; an ext4 installer carries neither. `report`, when set, is an executable the installer
 calls with one line per milestone; unset, the installer reports nothing. The installer ROOTS
 per wrapper: its own disk partition for raw/qcow2, the netboot face for kexec/ipxe, the iso
@@ -378,11 +398,9 @@ delivered-key convention (`/run/sops.age`, and `/tmp/zfs_root_key` for a pool pa
 riding the same slot), whichever face delivered it — so phase 2 on an `-install` artifact is
 the same personalize as everywhere else.
 
-Both storage shapes go through disko's own create/mount scripts, so the action reformats
-nothing it did not have to: a zfs pool is created by the install (L2), and an ext4 target is
-formatted the same way through the layout that also boots it. Two more invariants of the
-action: a second run over an already-installed target takes the mount path and formats
-nothing, and the wipe's blast radius is exactly the disks the host declared — the named
+Where a host has a disko layout, that layout IS its install script — the same declaration
+formats the target that boots it, and no partitioning is written twice. The invariant that
+survives every shape: the blast radius is exactly the disks the host declared, the named
 devices and nothing beside them.
 
 **A disk wrapper roots two ways, and both are endpoints, because the choice is the

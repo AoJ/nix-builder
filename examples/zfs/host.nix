@@ -1,7 +1,7 @@
 # A zfs server. The configuration states a zfs root, and that is enough for the front door
 # to know the storage and the pool (`rpool/root` → `rpool`). What it cannot read is how to
 # CREATE that pool — a pool is not a disko layout — so this host states its own install
-# recipe: create-and-mount, and mount-an-existing (the never-reformat path).
+# recipe: it creates the pool and mounts it at /mnt.
 #
 # Because the pool is created by the install (law L2), this host has no runtime disk
 # image: `image-raw` refuses, and the deliverables are the installers. See README.md.
@@ -70,13 +70,5 @@ builder.lib.imagesFor {
       mount "''${disk}-part1" /mnt/boot
     '';
 
-    mount = pkgs.writeShellScript "mount-zfs" ''
-      set -euo pipefail
-      zpool import ${pool}
-      mkdir -p /mnt
-      mount -t zfs ${pool}/root /mnt
-      mkdir -p /mnt/boot
-      mount ${device}-part1 /mnt/boot
-    '';
   };
 }

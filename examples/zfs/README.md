@@ -14,11 +14,12 @@ states its own recipe:
 
 | stated | what it is |
 |---|---|
-| `install.prepare` | partition, `zpool create`, `zfs create`, mount at `/mnt` — the create path |
-| `install.mount` | import the pool and mount it — the never-reformat path, tried first |
-| `install.disks` | what a create may clear; with a disko layout this would be read from it |
+| `install.prepare` | the install script: partition, `zpool create`, `zfs create`, mount at `/mnt` |
+| `install.disks` | what the install clears; with a disko layout this would be read from it |
 
-Both scripts run under the act's own PATH (nix, zfs, util-linux, coreutils); anything
+Stating that script is also what picks this host's delivery: a host with a recipe carries a
+closure and installs through it, a host without one gets its own disk image written as it
+is. The script runs under the act's own PATH (nix, zfs, util-linux, coreutils); anything
 else is spelled absolutely, as in `host.nix`.
 
 ## Three installers, one host
@@ -40,10 +41,11 @@ of them and a deploy picks:
 
 What happens on the machine, in order: the installer reads its slot, refuses anything it
 cannot carry out (absent disk, a disk holding the running system, a closure that will not
-fit), probes for an existing pool, creates one only if there is none, plants the key,
-installs offline, exports the pool and reboots.
+fit, files the slot was supposed to hold and does not), clears the declared disks, runs
+this host's script to create the pool, fills the target's slot, installs offline, exports
+the pool and leaves.
 
-**A second run over an installed machine installs nothing** — the pool is found and
-mounted. Replacing an existing system is a separate, explicit act: `install.wipe` as an
-exact word on the installer's kernel command line, which is the channel a deploy controls
-when it kexecs. `install.wipe=0` is not that word and does not enable it.
+**A second run replaces what is there.** An install is not an upgrade: installing onto
+storage that already holds a system would leave a machine that is half one system and half
+another, so the declared disks are cleared every time. Booting this artifact is the intent
+— it was put in the machine or kexec'd into it on purpose — and nothing asks again.

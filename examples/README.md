@@ -25,19 +25,38 @@ They are also runnable (`nix build`), but that is not the point of them.
 | the machine | kernel, module sets, firmware — so the installer boots where the host boots |
 | the live variants | `extendModules` with our faces, because a live format packs a **different** toplevel |
 | the artifact name | `networking.hostName` |
-| the install recipe | disko's own create and mount scripts, and the layout's disk list |
+| the install script | disko's own create script, when the host has a disko layout |
+| the disk list | the layout's own devices |
 | the pool | the first component of a zfs root's dataset (`rpool/root` → `rpool`) |
 
 | you state | why it cannot be read |
 |---|---|
 | `slotName` | it is a name, and the layout's partition label must say the same word |
 | `secrets.files` | what belongs in the slot, and where its bytes come from — see below |
-| `install.prepare` / `mount` / `disks` | only when the layout is not disko — a hand-made zfs pool has no layout to read |
+| `install.prepare` / `disks` | only when the layout is not disko — a hand-made zfs pool has no layout to read |
 | `install.encrypted` | a decision about the pool, not a statement the configuration makes |
+| `install.completion` | how the machine leaves the install; `kexec` is what a stick left in the machine cannot turn into a loop |
 
 Nothing is guessed. What cannot be derived is refused **by name** when something asks for
-it — and only then: a host with no install recipe keeps every other endpoint, and its
+it — and only then: a host with no install script keeps every other endpoint, and its
 `-install` ones say what is missing instead of vanishing from the set.
+
+## What an install delivers
+
+An install is how a system gets onto a machine, and it is a takeover — the machine may
+have been running anything. **What is delivered comes in three shapes, and this one
+declaration picks it:**
+
+| shape | when | what reaches the machine |
+|---|---|---|
+| `image` | the host states no install script | its own disk image, written as it is — bit for bit what was tested, and it may hold any operating system at all |
+| `closure` | asked for outright | the store paths, from which the same disk is assembled on the machine, for a target whose real size only the machine knows |
+| `script` | the host states one | the store paths, installed through the host's own recipe — for storage no image can hold, like a zfs pool |
+
+**An install replaces what is on the declared disks, every time.** It is not an upgrade:
+installing onto storage that already holds a system would leave a machine that is half one
+system and half another. Disks the host did not declare are never touched, and a disk the
+running system lives on is refused outright.
 
 ## The slot, and what goes in it
 

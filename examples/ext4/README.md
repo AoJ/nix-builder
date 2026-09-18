@@ -20,9 +20,11 @@ forms — `content.env` takes the bytes from a variable at run time (a deploy ru
 straight from a flake has no files), and `content.text` carries already-encrypted
 material declared in nix.
 
-Everything else comes out of the configuration: the ext4 storage from the root
-filesystem, the install recipe and the disk list from the disko layout, the live variants
-by `extendModules`, the machine record for the installer.
+Everything else comes out of the configuration: the ext4 storage from the root filesystem,
+the install script and the disk list from the disko layout, the live variants by
+`extendModules`, the machine record for the installer. Having that layout is also what
+decides how this host is delivered — through disko's own create script, rather than as a
+finished image.
 
 The disk id (`/dev/disk/by-id/virtio-main`) is the one value you must take from the real
 machine, and it is stated once — in [`layout.nix`](layout.nix), which is also what the
@@ -50,7 +52,8 @@ second must never be one — it handles secrets. Between them the artifact is co
 anonymous: it holds an empty slot and no identity.
 
 To install onto a machine instead of writing the disk directly, personalize
-`image-kexec-install` and kexec it; the installer formats the declared disk through this
-same layout, fills the slot the layout provides with the same files, and reboots into the
-installed system — which finds them exactly where it would have, had the image written
-the slot.
+`image-kexec-install` and kexec it; the installer clears the declared disk, formats it
+through this same layout, fills the slot the layout provides with the same files, and
+leaves the machine on the installed system — which finds them exactly where it would have,
+had the image written the slot. That second path replaces whatever was on the disk: an
+install is a takeover, not an upgrade.

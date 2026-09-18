@@ -95,17 +95,5 @@ builder.lib.imagesFor {
       mount "''${disk}-part1" /mnt/boot
     '';
 
-    # The never-reformat path over an encrypted pool: the on-disk keylocation names the
-    # initrd file, which does not exist in the installer — so load the key explicitly off
-    # the slot, then mount.
-    mount = pkgs.writeShellScript "mount-zfs-enc" ''
-      set -euo pipefail
-      zpool import ${pool}
-      zfs load-key -L file://${installSlot}/pool.pass ${pool}
-      mkdir -p /mnt
-      mount -t zfs ${pool}/root /mnt
-      mkdir -p /mnt/boot
-      mount ${device}-part1 /mnt/boot
-    '';
   };
 }

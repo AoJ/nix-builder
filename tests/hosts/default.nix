@@ -28,7 +28,6 @@ let
 
   syntheticInstall = {
     prepare = pkgs.writeShellScript "prepare" "sgdisk --zap-all /dev/target";
-    mount = pkgs.writeShellScript "mount" "mount /dev/target-root \"$1\"";
     pool = "rpool";
     encrypted = false;
     disks = [ "/dev/target" ];
@@ -55,10 +54,10 @@ let
     mount ${targetDevice}-part1 /mnt/boot
   '';
 
-  # The zfs host's REAL extracted install values: its disk-preparation creates the pool
-  # (and mounts it — the diskoScript role), its mount handles the already-present pool
-  # (the never-reformat path). The target disk is named here because these values are the
-  # host's own; nothing generic knows it.
+  # The zfs host's REAL extracted install values: its install script creates the pool and
+  # mounts it at /mnt — the diskoScript role, written by hand because a pool is not a disko
+  # layout. The target disk is named here because these values are the host's own; nothing
+  # generic knows it.
   zfsInstall = {
     pool = "rpool";
     encrypted = false;
@@ -73,11 +72,6 @@ let
       ${zfsPartitions}
       zpool create -f -o ashift=12 -O mountpoint=none -O compression=on rpool "''${disk}-part3"
       zfs create -o mountpoint=legacy rpool/root
-      ${zfsMountTail}
-    '';
-    mount = pkgs.writeShellScript "mount-zfs" ''
-      set -euo pipefail
-      zpool import rpool
       ${zfsMountTail}
     '';
   };
@@ -102,14 +96,6 @@ let
       # This host reads its passphrase out of the slot at BOOT (an initrd secret), and
       # the bootloader step that bakes it in runs during the install — so the slot has to
       # be mounted where this host says it lives before nixos-install runs.
-      mkdir -p /mnt${slotMount}
-      mount ${targetDevice}-part2 /mnt${slotMount}
-    '';
-    mount = pkgs.writeShellScript "mount-zfs-enc" ''
-      set -euo pipefail
-      zpool import rpool
-      zfs load-key -L file://${installSlot}/pool.pass rpool
-      ${zfsMountTail}
       mkdir -p /mnt${slotMount}
       mount ${targetDevice}-part2 /mnt${slotMount}
     '';
@@ -140,13 +126,12 @@ let
         (import ./modules/marker.nix { inherit record; })
         { networking.hostName = name; }
       ] ++ modules);
-      # A disko host's install prepare/mount ARE disko's own scripts — create+mount and
-      # mount-existing — so the same layout that boots the host also formats it, and the
-      # layout's own device list is what a create wipes. No hand-rolled partitioning.
+      # A disko host's install script IS disko's own create script, so the same layout that
+      # boots the host also formats it, and the layout's own device list is what the wipe
+      # clears. No hand-rolled partitioning.
       installFinal =
         if diskoInstall then {
           prepare = runtime.config.system.build.diskoScript;
-          mount = runtime.config.system.build.mountScript;
           pool = "";
           encrypted = false;
           disks = map (d: d.device) (lib.attrValues runtime.config.disko.devices.disk);

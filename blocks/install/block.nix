@@ -23,7 +23,7 @@ in
       '';
       type = types.submodule {
         options = {
-          kind = mkOption { type = types.enum [ "image" "closure" ]; };
+          kind = mkOption { type = types.enum [ "image" "closure" "script" ]; };
 
           image = mkOption {
             type = types.nullOr types.package;
@@ -49,11 +49,6 @@ in
             description = "Brings the target's storage into existence AND mounts it at /mnt. The block does not know its shape.";
           };
 
-          mount = mkOption {
-            type = types.nullOr types.package;
-            default = null;
-            description = "Mounts that storage at /mnt when it already exists — the never-reformat path.";
-          };
         };
       };
     };
@@ -185,7 +180,6 @@ in
         else {
           toplevel = required "payload.toplevel" p.toplevel;
           prepare = required "payload.prepare" p.prepare;
-          mount = required "payload.mount" p.mount;
         };
 
       encrypted =

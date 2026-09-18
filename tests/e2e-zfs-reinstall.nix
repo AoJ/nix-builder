@@ -1,12 +1,11 @@
 # The frequent pattern, proven end to end: a zfs host is REPLACED by another zfs host on
 # the same disk, same pool name (the fleet convention), different machine identity — and
 # the encrypted pool comes out of it. Three claims, each with its own phase:
-#   - without explicit wipe intent the second install REFUSES (the found pool is
-#     unencrypted, the new host expects encryption) and the first host still boots —
-#     never-reformat holds even across host identities. The run rides `install.wipe=0`:
-#     the form someone writes trying to turn the switch OFF must not count as intent;
-#   - with `install.wipe` on the loader's command line the declared disks are cleared and
-#     the create runs over the old pool's remains — labels, GUID, all of it;
+#   - an installer whose slot was never filled REFUSES before touching anything, and the
+#     host already on the disk still boots — the gate is what stands between a machine and
+#     a wipe it cannot finish;
+#   - the personalized one clears the declared disks and creates over the old pool's
+#     remains — labels, GUID, all of it;
 #   - the disk then really holds a NEW pool, read off its labels: a different pool GUID
 #     than the first install's, created by the replacement's own installer. Encryption is
 #     witnessed from the pool itself at create time (dataset encryption is not a label
@@ -39,6 +38,9 @@ in
     ${lib.getExe a.image-personalize-kexec.run} "$PWD/tree-a"
     prep_tree tree-b ${b.image-kexec-install.file}
     ${lib.getExe b.image-personalize-kexec.run} "$PWD/tree-b"
+    # The same artifact, left as phase one made it: an empty slot, so the gate has
+    # something real to refuse in phase 2.
+    prep_tree tree-b-bare ${b.image-kexec-install.file}
     cmdline_a="$(sed -n "s/^.*--command-line='\(.*\)'$/\1/p" tree-a/kexec.sh)"
     cmdline_b="$(sed -n "s/^.*--command-line='\(.*\)'$/\1/p" tree-b/kexec.sh)"
     [ -n "$cmdline_a" ] && [ -n "$cmdline_b" ]
@@ -104,20 +106,21 @@ in
     boot_target a-boot boot-a.log
     grep -q "E2E-BOOT-OK e2e-zfs" result-a-boot
 
-    echo "== phase 2: the replacement WITHOUT wipe intent must refuse, the old host survives =="
+    echo "== phase 2: an installer nobody personalized refuses, and the old host survives =="
+    # The slot is what the gate checks, and it checks it BEFORE anything destructive: the
+    # unpersonalized tree declares files that never arrived, so the disk is left alone and
+    # the host that is on it still boots.
     result b-refused
-    run_qemu tree-b "$cmdline_b install.wipe=0" b-refused refuse-b.log
+    run_qemu tree-b-bare "$cmdline_b" b-refused refuse-b.log
     grep -q "INSTALL-FAILED e2e-zfs-enc" result-b-refused
-    ! grep -q "REINSTALL" result-b-refused
     ! grep -q "INSTALL-OK" result-b-refused
     result a-again
     boot_target a-again boot-a-again.log
     grep -q "E2E-BOOT-OK e2e-zfs" result-a-again
 
-    echo "== phase 3: with install.wipe the replacement clears the old pool and installs =="
+    echo "== phase 3: the personalized replacement clears the old pool and installs =="
     result b
-    run_qemu tree-b "$cmdline_b install.wipe" b install-b.log
-    grep -q "REINSTALL e2e-zfs-enc" result-b
+    run_qemu tree-b "$cmdline_b" b install-b.log
     grep -q "E2E-POOL-ENCRYPTION aes-256-gcm" result-b
     grep -q "INSTALL-OK e2e-zfs-enc" result-b
 

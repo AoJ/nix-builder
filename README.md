@@ -66,9 +66,20 @@ Or wire it into your own flake — one evaluated NixOS system in, every endpoint
 }
 ```
 
-The storage, the machine, the live variants, the install recipe and the disk list are
-read out of the configuration. What you state is what a configuration cannot know: the
-slot's name, and what belongs in it.
+The storage, the machine, the live variants, the disk list and — where the host has a disko
+layout — the install script are read out of the configuration. What you state is what a
+configuration cannot know: the slot's name, and what belongs in it.
+
+**An `-install` artifact is how that system gets onto a machine, and it is a takeover.** It
+replaces what is on the disks the host declared, every time, and touches no other disk;
+installing onto storage that already holds a system would leave a machine that is half one
+system and half another. What it delivers comes in three shapes, picked by one declaration:
+a host with no install script gets its own **image** written as it is (bit for bit what was
+tested, and it may hold any operating system at all), a host with a script installs its
+**closure** through that script (for storage no image can hold, like a zfs pool), and a
+**closure** assembled on the machine is there for a target whose real size only the machine
+knows. Where the machine goes afterwards is a choice too — handing straight over to what was
+installed is what a stick left in the machine cannot turn into a reinstall loop.
 
 **The slot is a folder for the host's secrets, and nothing more.** The builder never
 generates a key, never reads one, and does not know what any file in there is for — it

@@ -22,8 +22,8 @@ let
   # mount or toplevel to name, and says so with empty ones.
   actionArgs =
     if kind == "image"
-    then [ "" "" "" slotName expectedSlotFiles storage pool "" ]
-    else [ payload.prepare payload.mount payload.toplevel slotName expectedSlotFiles
+    then [ "" "" slotName expectedSlotFiles storage pool "" ]
+    else [ payload.prepare payload.toplevel slotName expectedSlotFiles
            storage pool (if encrypted then "true" else "false") ];
 
   payloadEnv = lib.optionalString (kind == "image")
@@ -136,11 +136,9 @@ in
     path = [ actionInstall pkgs.systemd ] ++ lib.optional (completion == "kexec") pkgs.kexec-tools;
     # A refused or failed install must terminate the machine, visibly: a report line and a
     # poweroff, so a headless box does not sit wedged and a reboot cannot masquerade as
-    # success. Reinstall intent arrives over the LOADER's channel: `install.wipe` on the
-    # kernel command line (what a deploy controls when it kexecs the installer) — matched
-    # as an EXACT word, because `install.wipe=0` is what someone writes trying to turn a
-    # destructive switch OFF. The action takes the intent as input and wipes only after
-    # its own gate: refused means untouched, reinstall or not.
+    # success. Booting this artifact IS the intent — nothing asks a second time, because an
+    # install replaces what is on the declared disks by definition, and anything else would
+    # leave a machine that is half of two systems.
     script = ''
       set -euo pipefail
       ${reportFn}
@@ -149,15 +147,7 @@ in
         systemctl poweroff
         exit 1
       }
-      wipe=no
-      read -ra cmdline < /proc/cmdline
-      for word in "''${cmdline[@]}"; do
-        if [ "$word" = install.wipe ]; then wipe=yes; fi
-      done
-      if [ "$wipe" = yes ]; then
-        report_line "REINSTALL ${name}: wiping the declared disks first"
-      fi
-      ${payloadEnv}install_wipe="$wipe" action-install ${
+      ${payloadEnv}action-install ${
         lib.escapeShellArgs (actionArgs ++ disks)} || fail
       report_line "INSTALL-OK ${name}"
       ${finish}

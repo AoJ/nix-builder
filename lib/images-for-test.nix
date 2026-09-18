@@ -81,7 +81,6 @@ let
   zfsRecord = record zfsHost {
     install = {
       prepare = pkgs.writeShellScript "prepare" "true";
-      mount = pkgs.writeShellScript "mount" "true";
       disks = [ device ];
     };
   };
@@ -94,9 +93,8 @@ assert lib.assertMsg (diskoRecord.variants.runtime.storage == "ext4")
 assert lib.assertMsg (diskoRecord.install.disks == [ device ])
   "the wipe's blast radius is the disko layout's own device list";
 assert lib.assertMsg
-  (diskoRecord.install.prepare == diskoHost.config.system.build.diskoScript
-    && diskoRecord.install.mount == diskoHost.config.system.build.mountScript)
-  "a disko host's install recipe IS disko's own create and mount scripts";
+  (diskoRecord.install.prepare == diskoHost.config.system.build.diskoScript)
+  "a disko host does not write an install script: disko generates it";
 assert lib.assertMsg (diskoRecord.install.pool == "")
   "a plain filesystem has no pool";
 assert lib.assertMsg (diskoRecord.variants.runtime.rootMode == "disk")

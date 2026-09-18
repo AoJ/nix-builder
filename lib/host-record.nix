@@ -234,15 +234,6 @@ in
               PATH (nix, zfs, util-linux, coreutils); anything else is spelled absolutely.
             '';
           };
-          mount = mkOption {
-            type = types.nullOr types.package;
-            default = null;
-            description = ''
-              Mounts an ALREADY-INSTALLED target at /mnt — the never-reformat path, tried
-              before anything is created. Required alongside `prepare`, meaningless
-              without it.
-            '';
-          };
           payload = mkOption {
             type = types.nullOr types.attrs;
             default = null;

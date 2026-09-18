@@ -46,7 +46,6 @@ let
     };
     install = {
       prepare = pkgs.writeShellScript "prepare" "true";
-      mount = pkgs.writeShellScript "mount" "true";
       disks = [ "/dev/disk/by-id/example" ];
     };
   };

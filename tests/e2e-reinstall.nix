@@ -1,10 +1,10 @@
-# The never-reformat guarantee, proven — not assumed: an installer run against a disk that
-# ALREADY holds the installed system must take the mount path and format nothing. After a
-# fresh install (phase A), the harness plants a canary file in the target's slot partition;
-# the same installer runs again (phase C) and must report INSTALL-OK through the probe's
-# mount branch; the canary surviving byte-for-byte is the proof no format touched the disk
-# — a reformat recreates the slot filesystem and the canary with it is gone. The target
-# then boots (phase D), still the installed system.
+# An install REPLACES, proven — not assumed: running the same installer a second time over
+# a disk that already holds the installed system must produce that system again from
+# nothing, not an installation layered onto what was there. After a fresh install (phase
+# A), the harness plants a canary in the target's slot partition; the installer runs again
+# (phase C) and the canary must be GONE — its survival would mean the disk was reused, and
+# a machine that is half one system and half another is a machine nobody can reason about.
+# The target then boots (phase D), the installed system, complete.
 { pkgs, compose, hosts }:
 
 let
@@ -48,14 +48,16 @@ in
     echo "=== phase A result:" >&2; cat result-a >&2
     grep -q "INSTALL-OK e2e-ext4-install" result-a
 
-    echo "== the harness plants a canary in the installed disk's slot partition =="
+    echo "== the harness plants a canary on the installed disk =="
     slot_num="$(sgdisk -p target.img | awk '$NF == "secrets" { print $1 }')"
     [ -n "$slot_num" ]
     slot_start="$(sgdisk -i "$slot_num" target.img | awk '/^First sector/ { print $3 }')"
     [ -n "$slot_start" ]
     slot_off=$(( slot_start * 512 ))
-    echo "survives the second run" > canary
+    echo "must not survive a reinstall" > canary
     mcopy -o -i target.img@@"$slot_off" canary ::/canary
+    mcopy -i target.img@@"$slot_off" ::/canary planted
+    cmp canary planted
 
     echo "== phase C: the installer runs AGAIN over the installed disk =="
     run_installer result-c.img install-c.log
@@ -63,9 +65,14 @@ in
     echo "=== phase C result:" >&2; cat result-c >&2
     grep -q "INSTALL-OK e2e-ext4-install" result-c
 
-    echo "== the canary survived: the probe mounted, nothing formatted =="
-    mcopy -i target.img@@"$slot_off" ::/canary canary-back
-    cmp canary canary-back
+    echo "== the canary is GONE: the disk was cleared, not reused =="
+    # The slot may sit at a different offset now — the layout was created afresh — so it
+    # is found by name again rather than assumed to be where it was.
+    slot_num="$(sgdisk -p target.img | awk '$NF == "secrets" { print $1 }')"
+    [ -n "$slot_num" ]
+    slot_start="$(sgdisk -i "$slot_num" target.img | awk '/^First sector/ { print $3 }')"
+    slot_off=$(( slot_start * 512 ))
+    ! mcopy -i target.img@@"$slot_off" ::/canary gone 2>/dev/null
 
     echo "== phase D: the disk still boots the installed system =="
     install -m 0644 ${pkgs.OVMF.fd}/FV/OVMF_VARS.fd vars.fd

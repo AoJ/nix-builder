@@ -457,6 +457,14 @@ carrying these into the repo's module tree at integration.
 
 Files in, a sidecar out. Nothing boots and there is no partition table.
 
+**The slot is a folder for the host's secrets, and blocks never learns what they are (DECIDED,
+aoj 2026-09-18).** What a host puts there, what it calls those files, what format they are in
+and what they are for is the host's implementation — an age identity, a sops bundle, a pool
+passphrase are all the same thing here: bytes with a name. Blocks carries them to the declared
+place, at the declared mode, and opens none of them. Anything that would require reading one —
+validating a key against a bundle, deciding which file unlocks a pool — belongs to the host,
+which is the only side that knows what it wrote.
+
 A sidecar is data placed beside an image or file for the consumer to take. **Whether the consumer
 mounts it or reads it is a property of the sidecar FORMAT, not part of what a sidecar is**. The
 word "medium" does not appear in the blocks: it already means something else in this repo
@@ -465,7 +473,11 @@ word "medium" does not appear in the blocks: it already means something else in 
 **Its output is a runner, not a derivation** — the same argument personalize carries: a secret
 in a derivation is a secret in the store, and a sidecar exists to carry secrets. Phase-one
 mechanics are shared through the `fat-image` tool's app, so a sidecar and a slot are still one
-mechanism; the sources enter as strings and the bytes exist only where the runner is pointed.
+mechanism. A declared file says WHERE its bytes come from, and that is the only question asked
+about it: declared in nix (so already in the store — for material that is already encrypted),
+read from the environment when the runner runs, or read from a path then. The last two never
+touch the store, and the environment form is what a deploy running straight from a flake has: no
+file on disk anywhere.
 
 The block is one producer behind `secrets.delivery`, which is a SET on the host (DECIDED):
 `embedded` (the key rides in the artifact; `personalize` puts it there), `sidecar` (this block),
@@ -480,9 +492,12 @@ was left behind is how a host booted without an identity. Naming a producer for 
 the set is the composer's job, and a member without one fails at eval — the same shape as the
 slot's first check.
 
-For an `-install` image the consumer is the **install script**, not the target OS. That is why L2
-costs nothing: the installer's own slot is a plain, writable, well-known place, and the pool is
-created on the target with the real passphrase — no placeholder key in a cacheable derivation.
+For an `-install` image the slot is consumed twice: the install reads it while it runs — that is
+how a host's own storage step gets at whatever it needs, from a place blocks publishes and the
+host reads — and then fills the slot the target's layout provides, so the installed system finds
+its secrets exactly where it would have, had the image written them. That is why L2 costs
+nothing: the installer's own slot is a plain, writable, well-known place, and the pool is created
+on the target with the real passphrase — no placeholder key in a cacheable derivation.
 
 **Install-time secrets ride the same delivery set (DECIDED, aoj 2026-09-15).** The bricks
 combine like everything else: the pool passphrase may be `embedded` in the installer's slot
@@ -499,7 +514,7 @@ reaches for deploy-time delivery, hardware encryption, or an HSM — outside blo
 
 **Where the secrets come from**: openbao. The deploy script obtains them through its host role
 at deploy time and hands them to the runners as OUTSIDE input — which is exactly why `secrets`
-and `personalize` take runtime path strings, never derivations.
+and `personalize` take their secrets as declarations resolved at run time, never as derivations.
 
 ## personalize
 
@@ -515,12 +530,9 @@ and nothing is copied until every check has passed:
    such file";
 2. **the offset really holds a filesystem** — a cheap second opinion on the offset arithmetic,
    and the reason `image` leaves the slot formatted;
-3. **the key belongs to this host** — its public half is a recipient of the host's own bundle.
-   Planting another host's key otherwise surfaces as an undecryptable boot on a machine that may
-   only have a serial console. A bundle the check cannot read is a named refusal, not a skipped
-   check: committed bundles are YAML on some hosts and JSON on others. The bundle and the key's
-   target arrive as the block's input (`recipientCheck`) — it cannot know the host's;
-4. **read back what landed**, out of the artifact, and re-derive the public half.
+3. **every declared file has bytes to place** — a source that resolves to nothing is a named
+   refusal before the first write, never a file quietly left out;
+4. **read back what landed**, out of the artifact.
 
 ## The slot
 
@@ -540,6 +552,14 @@ For `iso` the slot is a file and not the isohybrid partition, because that parti
 handle: a SATA cdrom exposes no partitions at all, virtio does, and a second disk shifts the
 names (measured, in the plan). The offset is read out of the finished image
 (`xorriso … report_lba`), never bookkept at build time.
+
+An install adds a third face, and it is the same slot: the target's disk does not exist at build
+time, so what the image would have written is written during the install instead, into the slot
+the target's own layout provides. The host therefore reads its slot the same way whichever
+produced it — one declaration, one name, two ways of arriving. What the install itself must
+refuse follows from this: an installer whose slot never received the files the host declared
+stops before anything destructive, rather than clearing a disk and discovering the lack
+afterwards.
 
 The two faces enter the pipe at different points: the **runtime face** is a payload
 transformation — it adds a mount to the system, so it happens before `image`, exactly like

@@ -10,10 +10,13 @@ let
   base = {
     name = "fixture";
     system = "x86_64-linux";
-    toplevel = target;
-    closure = [ target pkgs.hello ];
-    prepare = pkgs.writeShellScript "prepare" "sgdisk --zap-all /dev/target";
-    mount = pkgs.writeShellScript "mount" "zpool import rpool && mount -t zfs rpool/root /mnt";
+    payload = {
+      kind = "closure";
+      toplevel = target;
+      storePaths = [ target pkgs.hello ];
+      prepare = pkgs.writeShellScript "prepare" "sgdisk --zap-all /dev/target";
+      mount = pkgs.writeShellScript "mount" "zpool import rpool && mount -t zfs rpool/root /mnt";
+    };
     pool = "rpool";
     storage = "zfs";
     encrypted = false;
@@ -38,6 +41,20 @@ let
   });
 
   refused = args: !(builtins.tryEval (install (base // args)).system.toplevel.drvPath).success;
+
+  # The other delivery: a finished disk, written as it is. What it holds is not this
+  # block's business, so the fixture is a file — that is the whole contract.
+  fixtureImage = pkgs.runCommand "fixture-payload.img.zst"
+    { nativeBuildInputs = [ pkgs.zstd ]; }
+    "echo 'a disk, as far as this block is concerned' | zstd -3 -o $out";
+  imageBase = base // {
+    storage = "ext4";
+    pool = "";
+    payload = { kind = "image"; image = fixtureImage; toplevel = target; };
+  };
+  handedImage = install imageBase;
+  refusedImage = args:
+    !(builtins.tryEval (install (imageBase // args)).system.toplevel.drvPath).success;
 
   # The pipe: image(install(host)) — the format does not know it is packing an installer.
   packed = image ({
@@ -67,6 +84,23 @@ assert lib.assertMsg (refused { storage = "ext4"; encrypted = true; })
   "L3: encryption outside the zfs layout must be refused at eval";
 assert lib.assertMsg (refused { slotName = "Bad Name"; })
   "a slot name outside the naming rule must be refused at eval";
+
+assert lib.assertMsg (builtins.elem fixtureImage handedImage.system.storePaths)
+  "an image delivery must CARRY the image it writes";
+assert lib.assertMsg (!(builtins.elem pkgs.hello handedImage.system.storePaths))
+  "and nothing else: an image is written as it is, so no closure rides along";
+assert lib.assertMsg
+  (refusedImage { payload = { kind = "image"; }; })
+  "an image payload with no image must be refused at eval";
+assert lib.assertMsg
+  (refusedImage { storage = "zfs"; pool = "rpool"; encrypted = true; })
+  "an image cannot be encrypted by this block — nothing here creates the pool (L3)";
+assert lib.assertMsg
+  (refusedImage { completion = "kexec"; payload = { kind = "image"; image = fixtureImage; }; })
+  "kexec needs to know the kernel it hands over to; an image alone does not say";
+assert lib.assertMsg
+  ((install (imageBase // { completion = "kexec"; })).system.toplevel != null)
+  "with the toplevel named, the hand-over is complete";
 
 pkgs.runCommand "test-install"
   { nativeBuildInputs = [ pkgs.gptfdisk pkgs.e2fsprogs pkgs.jq pkgs.coreutils pkgs.gnugrep ]; }

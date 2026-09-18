@@ -268,4 +268,22 @@ in
       diskoInstall = true;
       inherit slotName;
     };
+
+  # The IMAGE delivery: the same ext4 host, but declaring no install script at all — so
+  # what reaches the target is its own disk image, written as it is. Its disk layout is the
+  # image's own (ESP, store, slot), which is why nothing here describes one.
+  image-install = mk {
+    name = "e2e-image-install";
+    modules = [ ./modules/disk-ext4.nix ];
+    storage = "ext4";
+    secrets = withSecrets;
+    inherit slotName;
+    install = {
+      disks = [ targetDevice ];
+      report = reportBin;
+      # Hand straight to what was written: a boot medium left in the machine would
+      # otherwise be found again by firmware, and the install would start over.
+      completion = "kexec";
+    };
+  };
 }

@@ -39,6 +39,7 @@ let
     plain = [ ];
     arm = [ ];
     "ext4-install" = [ ];
+    "image-install" = [ ];
     zfs = [ "image-raw" "image-qcow2" ];
     "zfs-enc" = [ "image-raw" "image-qcow2" ];
   };
@@ -176,6 +177,31 @@ let
       closure = "eval-only";
       closure-live = "eval-only";
     };
+    # The image delivery: no install script, so the installers carry this host's own disk
+    # image and write it as it is.
+    "image-install" = {
+      image-raw = "eval-only";
+      image-iso = "eval-only";
+      image-qcow2 = "eval-only";
+      image-kexec = "eval-only";
+      image-ipxe = "eval-only";
+      image-raw-install = "eval-only";
+      image-qcow2-install = "eval-only";
+      image-iso-install = "eval-only";
+      image-kexec-install = "booted";
+      image-ipxe-install = "eval-only";
+      image-raw-install-inmemory = "eval-only";
+      image-qcow2-install-inmemory = "eval-only";
+      image-secrets-vfat = "eval-only";
+      image-secrets-iso = "eval-only";
+      image-secrets-json = "eval-only";
+      image-personalize = "eval-only";
+      image-personalize-iso = "eval-only";
+      image-personalize-kexec = "booted";
+      closure = "eval-only";
+      closure-live = "eval-only";
+    };
+
     "ext4-install" = {
       image-raw = "eval-only";
       image-iso = "eval-only";

@@ -36,13 +36,12 @@ let
       diskoDisks = cfg.disko.devices.disk or { };
       hasDisko = diskoDisks != { };
 
-      # An install recipe is the host's to provide, and a host without one is not broken —
-      # it simply has no installers. The endpoints stay in the set and say this when asked
-      # for, rather than vanishing: a set that differs per host is a set nobody can script
-      # against.
-      noRecipe = field: throw ("imagesFor(${toString name}): the #image-*-install endpoints"
-        + " need an install recipe and this host has none — it declares no disko layout,"
-        + " so state install.${field} yourself, or deploy a runtime image instead");
+      # A disko layout IS an install script — create and mount, generated instead of
+      # written — so a host that has one installs through it. A host with neither gets its
+      # own disk image written as it is, which needs no recipe at all.
+      noDisks = throw ("imagesFor(${toString name}): the #image-*-install endpoints need to"
+        + " know which disks they may clear, and this host declares neither a disko layout"
+        + " nor install.disks");
 
       # rpool/root -> rpool: the pool is the first component of the root dataset.
       derivedPool =
@@ -50,15 +49,15 @@ let
         else lib.head (lib.splitString "/" rootFs.device);
 
       installFinal = {
-        prepare = install.prepare or
-          (if hasDisko then cfg.system.build.diskoScript else noRecipe "prepare");
-        mount = install.mount or
-          (if hasDisko then cfg.system.build.mountScript else noRecipe "mount");
+        prepare = install.prepare or (if hasDisko then cfg.system.build.diskoScript else null);
+        mount = install.mount or (if hasDisko then cfg.system.build.mountScript else null);
         disks = install.disks or
-          (if hasDisko then map (d: d.device) (lib.attrValues diskoDisks) else noRecipe "disks");
+          (if hasDisko then map (d: d.device) (lib.attrValues diskoDisks) else noDisks);
         pool = install.pool or derivedPool;
         encrypted = install.encrypted or false;
         report = install.report or null;
+        payload = install.payload or null;
+        completion = install.completion or "reboot";
       };
     in
     {

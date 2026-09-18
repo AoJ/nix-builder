@@ -222,18 +222,47 @@ in
       type = types.submodule {
         options = {
           prepare = mkOption {
-            type = types.package;
+            type = types.nullOr types.package;
+            default = null;
             description = ''
-              Brings the target's storage into existence AND mounts it at /mnt — disko's
-              own create script, or an equivalent. Runs under the action's PATH (nix, zfs,
-              util-linux, coreutils); anything else is spelled absolutely.
+              THE INSTALL SCRIPT, and the reason to have one: it brings storage no image
+              can hold into existence and mounts it at /mnt (a zfs pool, whose identity is
+              a kernel object). Declaring it is what makes this host's install carry a
+              closure and install onto storage created on the spot; a host that declares
+              none gets its own disk image written as it is, which is simpler in every way
+              and gives a machine byte for byte what was tested. Runs under the action's
+              PATH (nix, zfs, util-linux, coreutils); anything else is spelled absolutely.
             '';
           };
           mount = mkOption {
-            type = types.package;
+            type = types.nullOr types.package;
+            default = null;
             description = ''
-              Mounts an ALREADY-INSTALLED target at /mnt. This is the never-reformat path:
-              the act runs it first, and only a target it cannot mount gets created.
+              Mounts an ALREADY-INSTALLED target at /mnt — the never-reformat path, tried
+              before anything is created. Required alongside `prepare`, meaningless
+              without it.
+            '';
+          };
+          payload = mkOption {
+            type = types.nullOr types.attrs;
+            default = null;
+            description = ''
+              What is delivered, when the host wants to say it rather than have it
+              derived. `{ kind = "image"; image = <zstd-compressed disk>; }` delivers a
+              finished disk from anywhere — including one holding an operating system
+              that is not NixOS at all — and `{ kind = "closure"; … }` names the pieces
+              the install-script path installs. Null derives it from whether this host
+              declared an install script.
+            '';
+          };
+          completion = mkOption {
+            type = types.enum [ "reboot" "poweroff" "kexec" ];
+            default = "reboot";
+            description = ''
+              How the machine leaves the install. `kexec` hands straight to what was just
+              delivered, which is the one ending a boot medium left in the machine cannot
+              turn into a reinstall loop; `poweroff` stops and waits for someone to pull
+              that medium; `reboot` goes through firmware again.
             '';
           };
           disks = mkOption {

@@ -30,7 +30,7 @@ in
   actionInstall = { storage }: bashTool {
     name = "action-install";
     runtimeInputs = (with pkgs; [
-      nix util-linux e2fsprogs dosfstools nixos-install-tools coreutils gawk
+      nix util-linux e2fsprogs dosfstools nixos-install-tools coreutils gawk gptfdisk zstd
     ]) ++ [ (actionWipe { inherit storage; }) ]
       ++ lib.optional (storage == "zfs") pkgs.zfs;
     text = builtins.readFile ./action-install.sh;

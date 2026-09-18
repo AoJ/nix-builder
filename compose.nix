@@ -115,12 +115,41 @@ let
   # The installer reads its install-time key from its OWN slot, whose shape is the
   # WRAPPER's: a disk wrapper from a partition (whichever way the installer roots), an iso
   # from the medium's file, a netboot from the initrd hand-over.
+  # WHAT the install delivers. Derived, because the host already said everything needed to
+  # decide: a host whose storage no image can hold states a recipe for it, and that recipe
+  # is the only reason to carry a closure and install onto storage created on the spot.
+  # Everyone else gets their own disk image written as it is. A host may say `payload`
+  # itself to override — that is how a finished image from elsewhere, or another operating
+  # system entirely, is delivered by the same act.
+  compressedImage = raw: pkgs.runCommand "${host.name}-payload.img.zst"
+    { nativeBuildInputs = [ pkgs.zstd ]; }
+    "zstd -3 -T0 -o $out ${raw}";
+
+  derivedPayload =
+    if host.install.prepare == null && host.variants.runtime.storage == "zfs"
+    then throw ("install(${host.name}): a zfs target cannot be delivered as an image — a"
+      + " pool is a kernel object with its own identity, not bytes on a disk (L2). State"
+      + " install.prepare, the script that creates it.")
+    else if host.install.prepare != null then {
+      kind = "closure";
+      toplevel = host.variants.runtime.toplevel;
+      storePaths = [ host.variants.runtime.toplevel ];
+      inherit (host.install) prepare mount;
+    } else {
+      kind = "image";
+      image = compressedImage runtimeEndpoints.image-raw.file;
+      # Carried for the hand-over, and for nothing else: the act never reads it.
+      toplevel = host.variants.runtime.toplevel;
+    };
+
+  payload =
+    if host.install.payload != null then host.install.payload else derivedPayload;
+
   installerFor = { rootMode, faceFormat, isoLabel }:
     (install {
       inherit (host) name system;
-      toplevel = host.variants.runtime.toplevel;
-      closure = [ host.variants.runtime.toplevel ];
-      inherit (host.install) prepare mount pool disks report encrypted;
+      inherit payload;
+      inherit (host.install) pool disks report encrypted completion;
       storage = host.variants.runtime.storage;
       machine = host.variants.runtime.machine;
       slotName = slot.name;

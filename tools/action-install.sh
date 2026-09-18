@@ -1,4 +1,10 @@
-# action-install — install a system onto its target from a RAM install environment.
+# action-install — deliver a system onto its target from a RAM install environment. One
+# act, two ways of delivering, chosen by what the caller carries:
+#
+#   image    a finished disk, streamed onto the target as it is. What it holds is never
+#            looked at — a NixOS host, another operating system, anything that boots.
+#   closure  store paths installed onto storage the target's own recipe creates, for a
+#            layout no image can hold (a zfs pool, whose identity is a kernel object).
 #
 #   action-install <createScript> <mountScript> <toplevel> <slotName> <slotFiles> \
 #     <storage> <pool> <encrypted> <disk>...
@@ -7,6 +13,9 @@
 # create, or an equivalent). mountScript mounts an already-present target at /mnt — the
 # never-reformat probe. The disks are the block devices the target lives on: wiped before a
 # create, never touched on the mount path.
+#
+# The image way takes `payload_image` and `payload_bytes` from the environment instead of
+# the create/mount pair, and never mounts the target at all.
 #
 # The SLOT is the only thing this carries: the caller lays the installer's own slot out at
 # /run/slot, the host's own storage scripts read from there whatever they need, and the act
@@ -32,10 +41,29 @@ encrypted=${8:-}
   "<slotFiles> <storage> <pool> <encrypted> <disk>..."
 shift 8
 disks=("$@")
-required create mounts toplevel slot_name slot_files storage encrypted
-[ "$storage" != zfs ] || required pool
-[ "$encrypted" = true ] || [ "$encrypted" = false ] \
-  || fatal "encrypted must be true or false, got '$encrypted'"
+required slot_name slot_files storage
+payload_image=${payload_image:-}
+if [ -n "$payload_image" ]; then
+  kind=image
+  [ "${#disks[@]}" = 1 ] \
+    || fatal "an image is one disk written as it is; this install declares ${#disks[@]}"
+  # The image's own header says how big it unpacks to — one source of truth, and it holds
+  # for an image from anywhere, not just one this repo built.
+  sc=0
+  listing=$(timeout 60 zstd -lv "$payload_image") || sc=$?
+  [ "$sc" = 0 ] || fatal "cannot read the image's header: $payload_image"
+  payload_bytes=$(awk -F'[()]' '/Decompressed Size/ { split($2, a, " "); print a[1] }' \
+    <<< "$listing")
+  case "$payload_bytes" in
+    "" | *[!0-9]*) fatal "the image declares no decompressed size: $payload_image" ;;
+  esac
+else
+  kind=closure
+  required create mounts toplevel encrypted
+  [ "$storage" != zfs ] || required pool
+  [ "$encrypted" = true ] || [ "$encrypted" = false ] \
+    || fatal "encrypted must be true or false, got '$encrypted'"
+fi
 install_wipe=${install_wipe:-no}
 
 # Filesystem headroom the target must hold beyond the closure: ESP, slot, metadata.
@@ -75,6 +103,17 @@ capability_gate() {
     capacity=$((capacity + sz))
   done
 
+  if [ "$kind" = image ]; then
+    # An image is written as it is, so it must FIT — no headroom arithmetic, just the
+    # disk being at least as large as what goes on it.
+    if [ "$payload_bytes" -gt "$capacity" ]; then
+      fatal "the image needs $payload_bytes bytes but the declared disk holds $capacity" \
+        "— refusing before any write"
+    fi
+    info "capability gate ok: image $payload_bytes bytes, disk $capacity bytes"
+    return 0
+  fi
+
   tmp_req=$(mktemp)
   add_cleanup "rm -f '$tmp_req'"
   tmp_du=$(mktemp)
@@ -91,6 +130,33 @@ capability_gate() {
       "but the declared disks hold $capacity — refusing before any format"
   fi
   info "capability gate ok: closure $closure_bytes bytes, disks $capacity bytes"
+}
+
+# The image way: clear the disk, stream the image onto it, and make the table whole again.
+# Nothing is mounted and nothing is read out of what was written — this is a delivery, not
+# an installation.
+write_image() {
+  local disk=${disks[0]} dev
+  dev=$(readlink -f "$disk") || fatal "cannot resolve declared disk $disk"
+  info "writing the image to $disk ($payload_bytes bytes)"
+  run "wipe $disk" action-wipe "$disk"
+  # Decompressed straight onto the disk: a 1.4 GB image would otherwise need that much
+  # free memory in an installer that has no disk of its own to spill to.
+  run "write image" zstdcat_to_disk "$payload_image" "$dev"
+  best_effort "flush buffers" sync
+  # A disk larger than the image leaves GPT's backup header where the image ended, which
+  # is not the end of this disk. -e moves it; without it every later tool reports a
+  # corrupt table.
+  best_effort "move the GPT backup header to the end of $disk" sgdisk -e "$dev"
+  best_effort "reread partition tables" partprobe "$dev"
+  udevadm settle
+}
+
+# A function rather than a pipeline at the call site: `run` takes ONE command, and a
+# pipeline's failure would otherwise be the last stage's alone.
+zstdcat_to_disk() {
+  set -o pipefail
+  zstd -dc "$1" | dd of="$2" bs=4M conv=fsync status=none
 }
 
 wipe_and_create() {
@@ -211,10 +277,17 @@ teardown() {
   fi
 }
 
-info "action-install starting: storage=$storage${pool:+ pool=$pool} slot=$slot_name"
+info "action-install starting: $kind delivery, storage=$storage${pool:+ pool=$pool}" \
+  "slot=$slot_name"
 capability_gate
-prepare_target
-place_slot
-install_system
-teardown
-info "action-install done — $storage installed cleanly"
+if [ "$kind" = image ]; then
+  write_image
+  place_slot
+  info "action-install done — the image is on the disk"
+else
+  prepare_target
+  place_slot
+  install_system
+  teardown
+  info "action-install done — $storage installed cleanly"
+fi

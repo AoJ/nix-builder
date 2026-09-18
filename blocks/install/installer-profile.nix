@@ -1,11 +1,11 @@
 # The installing OS — the BLOCK's, not the caller's. A minimal, serial-consoled system
-# whose one job is to run the install action against the caller's values, then reboot into
-# what it installed. The installer roots per wrapper: its own ext4 partition (raw/qcow2),
-# the netboot face (kexec/ipxe), or the iso face keyed by the medium's label (iso). Its
-# hardware support is the HOST's declaration (the machine record) — it boots exactly where
-# the host boots, and carries nothing the host did not claim to need.
-{ name, prepare, mount, toplevel, pool, storage, encrypted, slotName, slotFiles
-, rootMode, isoLabel, slotFace, disks, report, machine, actionInstall
+# whose one job is to run the install action against the caller's values, then leave the
+# machine on what it delivered. The installer roots per wrapper: its own ext4 partition
+# (raw/qcow2), the netboot face (kexec/ipxe), or the iso face keyed by the medium's label
+# (iso). Its hardware support is the HOST's declaration (the machine record) — it boots
+# exactly where the host boots, and carries nothing the host did not claim to need.
+{ name, kind, payload, pool, storage, encrypted, slotName, slotFiles
+, rootMode, isoLabel, slotFace, disks, report, machine, actionInstall, completion, handover
 , netbootFace, isoFace }:
 
 { pkgs, lib, modulesPath, ... }:
@@ -17,6 +17,33 @@ let
   # What the host said its slot carries, by path — the act checks arrival, never content.
   expectedSlotFiles = pkgs.writeText "${name}-slot-files"
     (lib.concatMapStrings (f: "${f}\n") slotFiles);
+
+  # The action takes the same nine arguments either way; an image delivery has no create,
+  # mount or toplevel to name, and says so with empty ones.
+  actionArgs =
+    if kind == "image"
+    then [ "" "" "" slotName expectedSlotFiles storage pool "" ]
+    else [ payload.prepare payload.mount payload.toplevel slotName expectedSlotFiles
+           storage pool (if encrypted then "true" else "false") ];
+
+  payloadEnv = lib.optionalString (kind == "image")
+    "payload_image=${lib.escapeShellArg payload.image} ";
+
+  # Handing over to what was just installed: its kernel rides in the INSTALLER's store,
+  # so nothing has to be read back off the target. `-f` is the whole point of the ending —
+  # it leaves no chance for firmware to find the install medium a second time.
+  handoverScript = lib.optionalString (completion == "kexec") ''
+    kexec --load ${handover}/kernel --initrd=${handover}/initrd \
+      --command-line="init=${handover}/init $(cat ${handover}/kernel-params)"
+    report_line "HANDOVER ${name}"
+    kexec -e
+  '';
+
+  finish = {
+    kexec = handoverScript;
+    reboot = "systemctl reboot";
+    poweroff = "systemctl poweroff";
+  }.${completion};
 in
 {
   imports = [
@@ -106,7 +133,7 @@ in
       StandardOutput = "journal+console";
       StandardError = "journal+console";
     };
-    path = [ actionInstall pkgs.systemd ];
+    path = [ actionInstall pkgs.systemd ] ++ lib.optional (completion == "kexec") pkgs.kexec-tools;
     # A refused or failed install must terminate the machine, visibly: a report line and a
     # poweroff, so a headless box does not sit wedged and a reboot cannot masquerade as
     # success. Reinstall intent arrives over the LOADER's channel: `install.wipe` on the
@@ -130,12 +157,10 @@ in
       if [ "$wipe" = yes ]; then
         report_line "REINSTALL ${name}: wiping the declared disks first"
       fi
-      install_wipe="$wipe" action-install ${lib.escapeShellArgs
-        ([ prepare mount toplevel slotName expectedSlotFiles storage pool
-           (if encrypted then "true" else "false")
-         ] ++ disks)} || fail
+      ${payloadEnv}install_wipe="$wipe" action-install ${
+        lib.escapeShellArgs (actionArgs ++ disks)} || fail
       report_line "INSTALL-OK ${name}"
-      systemctl reboot
+      ${finish}
     '';
   };
 }

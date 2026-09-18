@@ -12,24 +12,61 @@ in
       description = "Architecture the installer runs on — the target's, since it installs offline.";
     };
 
-    toplevel = mkOption {
-      type = types.package;
-      description = "The system to be installed.";
+    payload = mkOption {
+      description = ''
+        WHAT is delivered, in one of the two shapes a delivery can take. An `image` is a
+        finished disk written to the target as it is — the installed machine is then byte
+        for byte what was tested, and what the image holds is none of this block's
+        business: a NixOS host, another operating system, anything that boots. A `closure`
+        is the host's store paths, installed onto storage the target's own recipe creates
+        — which is what a layout blocks cannot build (a zfs pool) still needs.
+      '';
+      type = types.submodule {
+        options = {
+          kind = mkOption { type = types.enum [ "image" "closure" ]; };
+
+          image = mkOption {
+            type = types.nullOr types.package;
+            default = null;
+            description = "The disk to write, zstd-compressed; streamed to the disk, never unpacked to a file.";
+          };
+
+          toplevel = mkOption {
+            type = types.nullOr types.package;
+            default = null;
+            description = "The system to install (closure payloads).";
+          };
+
+          storePaths = mkOption {
+            type = types.listOf types.package;
+            default = [ ];
+            description = "What the installer carries, so it can install offline (closure payloads).";
+          };
+
+          prepare = mkOption {
+            type = types.nullOr types.package;
+            default = null;
+            description = "Brings the target's storage into existence AND mounts it at /mnt. The block does not know its shape.";
+          };
+
+          mount = mkOption {
+            type = types.nullOr types.package;
+            default = null;
+            description = "Mounts that storage at /mnt when it already exists — the never-reformat path.";
+          };
+        };
+      };
     };
 
-    closure = mkOption {
-      type = types.listOf types.package;
-      description = "What the installer carries, so it can install offline.";
-    };
-
-    prepare = mkOption {
-      type = types.package;
-      description = "Brings the target's storage into existence AND mounts it at /mnt. The block does not know its shape.";
-    };
-
-    mount = mkOption {
-      type = types.package;
-      description = "Mounts that storage at /mnt when it already exists — the never-reformat path.";
+    completion = mkOption {
+      type = types.enum [ "reboot" "poweroff" "kexec" ];
+      default = "reboot";
+      description = ''
+        How the machine leaves the install. `kexec` hands straight to what was just
+        installed, which is the one ending a boot medium left in the machine cannot turn
+        into a reinstall loop; `poweroff` stops and waits for someone to pull that medium;
+        `reboot` goes through firmware again, for a machine that needs the cold start.
+      '';
     };
 
     pool = mkOption {
@@ -133,18 +170,56 @@ in
 
   config.out.system =
     let
+      p = config.payload;
+      # A payload is refused here rather than half-understood later: each shape needs
+      # exactly its own inputs, and a missing one would otherwise surface as an install
+      # that starts and cannot finish.
+      required = name: v:
+        if v == null
+        then throw "install(${config.name}): a ${p.kind} payload needs ${name}"
+        else v;
+      payload =
+        if p.kind == "image" then {
+          image = required "payload.image" p.image;
+        }
+        else {
+          toplevel = required "payload.toplevel" p.toplevel;
+          prepare = required "payload.prepare" p.prepare;
+          mount = required "payload.mount" p.mount;
+        };
+
       encrypted =
         if config.encrypted && config.storage != "zfs"
         then throw ("install(${config.name}): encryption is the zfs layout's property (L3)"
           + " — storage=${config.storage} cannot declare it")
+        else if config.encrypted && p.kind == "image"
+        then throw ("install(${config.name}): an image payload is written as it is, so"
+          + " nothing here creates a pool to encrypt")
         else config.encrypted;
+
+      # kexec hands over to the system that was just written, so its kernel has to be in
+      # the INSTALLER's store — the target's is behind a filesystem this has no business
+      # mounting. An image whose contents are not ours cannot be handed to.
+      handover =
+        if config.completion != "kexec" then null
+        else if p.toplevel == null
+        then throw ("install(${config.name}): completion=kexec needs payload.toplevel —"
+          + " the kernel to hand over to has to be known, and an image alone does not say")
+        else p.toplevel;
+
+      # Forced here rather than left to whichever branch happens to read them: an image
+      # delivery never looks at `encrypted`, so a refusal riding on that value alone would
+      # fire for a closure and stay silent for an image.
+      checked = builtins.seq encrypted (builtins.seq handover payload);
+
       installer = import (pkgs.path + "/nixos/lib/eval-config.nix") {
         inherit (config) system;
         modules = [
           (import ./installer-profile.nix {
-            inherit (config) name prepare mount toplevel pool storage rootMode
-              isoLabel slotFace disks report machine slotName slotFiles;
-            inherit encrypted;
+            inherit (config) name pool storage rootMode isoLabel slotFace disks report
+              machine slotName slotFiles completion;
+            inherit encrypted payload handover;
+            kind = p.kind;
             actionInstall = tools.actionInstall { inherit (config) storage; };
             inherit (tools) netbootFace isoFace;
           })
@@ -153,12 +228,17 @@ in
       toplevel = installer.config.system.build.toplevel;
       efiArch = installer.pkgs.stdenv.hostPlatform.efiArch;
     in
+    builtins.seq checked
     {
       inherit toplevel;
       kernel = "${toplevel}/kernel";
       initrd = "${toplevel}/initrd";
       kernelParams = installer.config.boot.kernelParams ++ [ "init=${toplevel}/init" ];
-      storePaths = [ toplevel ] ++ config.closure;
+      # What the installer must CARRY: the image to write, or the closure to install —
+      # plus, for a kexec ending, the kernel it hands over to.
+      storePaths = [ toplevel ]
+        ++ (if p.kind == "image" then [ payload.image ] else [ payload.toplevel ] ++ p.storePaths)
+        ++ lib.optional (handover != null) handover;
       espBinary =
         "${installer.config.systemd.package}/lib/systemd/boot/efi/systemd-boot${efiArch}.efi";
       rootMode = config.rootMode;

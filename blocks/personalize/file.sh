@@ -18,7 +18,7 @@ mdir -i "$artifact@@$off" :: > /dev/null 2>&1 \
   || fatal "refusal: the file at $slot_path holds no filesystem"
 
 staged=$(mktemp -d)
-add_cleanup rm -rf "$staged"
+add_cleanup "rm -rf $(printf '%q' "$staged")"
 stage_manifest "$manifest" "$staged"
 
 while IFS= read -r target; do

@@ -7,7 +7,7 @@ out=${1:?usage: sidecar <out>}
 required volume_id manifest
 
 staged=$(mktemp -d)
-add_cleanup rm -rf "$staged"
+add_cleanup "rm -rf $(printf '%q' "$staged")"
 stage_manifest "$manifest" "$staged"
 
 # No stdenv at runtime: the epoch is set here, and the staged copies carry cp's wall

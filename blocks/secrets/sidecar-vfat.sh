@@ -8,12 +8,12 @@ out=${1:?usage: sidecar <out>}
 required fat_image label volume_id size_bytes manifest
 
 staged=$(mktemp -d)
-add_cleanup rm -rf "$staged"
+add_cleanup "rm -rf $(printf '%q' "$staged")"
 stage_manifest "$manifest" "$staged"
 
 # fat-image takes its own <source>\t<target> manifest; the staged tree is what it copies.
 fat_manifest=$(mktemp)
-add_cleanup rm -f "$fat_manifest"
+add_cleanup "rm -f $(printf '%q' "$fat_manifest")"
 while IFS= read -r target; do
   printf '%s\t%s\n' "$staged$target" "$target" >> "$fat_manifest"
 done < <(manifest_targets "$manifest")

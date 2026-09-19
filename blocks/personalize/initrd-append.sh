@@ -16,7 +16,7 @@ grep -aqF -- ".slot-$slot_name" "$artifact/initrd" \
   || fatal "refusal: the artifact carries no slot segment named $slot_name"
 
 staged=$(mktemp -d)
-add_cleanup rm -rf "$staged"
+add_cleanup "rm -rf $(printf '%q' "$staged")"
 stage_manifest "$manifest" "$staged"
 
 # A new segment must start 4-byte aligned or the kernel's parser stops at a misaligned

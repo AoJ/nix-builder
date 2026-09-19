@@ -10,7 +10,7 @@ required manifest
 # Nothing may touch $out before every file resolves: a refusal that leaves an empty file
 # behind is a refusal that wrote something.
 staged=$(mktemp -d)
-add_cleanup rm -rf "$staged"
+add_cleanup "rm -rf $(printf '%q' "$staged")"
 stage_manifest "$manifest" "$staged"
 
 sc=0

@@ -97,6 +97,9 @@ The API:
 - `lib.imagesFor { pkgs; host; slotName; secrets ? …; install ? …; }` — the front door.
 - `lib.recordFor` — the same, stopping at the record, for a consumer who wants to adjust
   a field before composing it.
+- `lib.diskLayout { device; slotName; espSize ? …; slotSize ? … }` — the layout template,
+  imported in the host's own configuration next to disko's module: ESP, slot, ext4 root,
+  every choice visible there and overridden like any other option.
 - `lib.mk { pkgs }` → `tools`, `compose`, `modules` (`liveNetboot`, `liveIso label`,
   `readOnlyStore { device }` — the host-side modules a memory-rooted host needs),
   plus `imagesFor` and `recordFor` bound to that `pkgs`.

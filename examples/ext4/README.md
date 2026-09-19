@@ -1,9 +1,16 @@
 # A plain disk host
 
 The simplest complete story: one machine, one disk, an ext4 root, secrets delivered in
-the artifact. Everything the composer needs is in [`host.nix`](host.nix); the disk itself
-is described once in [`layout.nix`](layout.nix) and serves three purposes — it boots the
-host, it formats the target at install, and it provides the slot.
+the artifact. Everything is in [`host.nix`](host.nix), the disk included: it imports the
+builder's layout template, `builder.lib.diskLayout`, which serves three purposes at once
+— it boots the host, it formats the target at install, and it provides the slot.
+
+The template is for a host that must own a disk but has nothing particular to say about
+it. It is an ordinary disko layout, imported in the configuration where you can see it:
+ESP at `/boot`, a vfat slot partition, an ext4 root taking the rest. `espSize` and
+`slotSize` are arguments (this host widens the slot to 32M); anything else is overridden
+like any other option, and a host that outgrows the template writes its own layout and
+changes nothing else — the install runs disko's create script either way.
 
 ## What this host states
 
@@ -31,9 +38,9 @@ the target as it is. One host, two ways of arriving, and the disko layout is wha
 between them — see [../README.md](../README.md).
 
 The disk id (`/dev/disk/by-id/virtio-main`) is the one value you must take from the real
-machine, and it is stated once — in [`layout.nix`](layout.nix), which is also what the
-install clears. Use a by-id name, never `/dev/sda`: a name that moves between boots is a
-name that can clear the wrong disk.
+machine, and it is stated once — as the layout's `device`, which is also what the install
+clears. Use a by-id name, never `/dev/sda`: a name that moves between boots is a name
+that can clear the wrong disk.
 
 ## What it gets
 

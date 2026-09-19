@@ -236,17 +236,18 @@ in
     inherit slotName;
   };
 
-  # The ext4 INSTALL host: a real disko layout owns the disk AND the slot partition, so the
-  # install action formats ext4 through disko's own scripts (no zpool anywhere). ONE
-  # declaration names the slot: the layout's partition and the host record read the same
-  # binding.
+  # The ext4 INSTALL host: the published layout TEMPLATE owns the disk AND the slot
+  # partition, so the install action formats ext4 through disko's own scripts (no zpool
+  # anywhere). ONE declaration names the slot: the layout's partition and the host record
+  # read the same binding. The e2e boots what the template produced, so the template a
+  # consumer imports is the one the suite proves.
   ext4-install =
     let slotName = "secrets";
     in mk {
       name = "e2e-ext4-install";
       modules = [
         diskoModule
-        (import ./modules/disk-ext4-layout.nix { device = targetDevice; inherit slotName; })
+        ((import ../../lib/api.nix).diskLayout { device = targetDevice; inherit slotName; })
       ];
       storage = "ext4";
       secrets = withSecrets;

@@ -2,6 +2,11 @@
 # configuration cannot state. Everything else — the storage, the machine, the live
 # variants, the install recipe, the disk list — is read out of the host itself.
 #
+# The layout here is the builder's TEMPLATE, for a host with nothing particular to say
+# about its disk. It is an ordinary disko layout in this configuration: override any of it
+# below, or drop it and write your own — the install treats both the same way, because it
+# just runs disko's create script.
+#
 # See README.md for where each value comes from, and ../../lib/host-record.nix for the
 # record this fills in.
 { pkgs, builder, diskoModule }:
@@ -22,9 +27,18 @@ let
     users.allowNoPasswordLogin = true;
   };
 
+  # GPT on that disk: an ESP at /boot, a vfat slot partition named slotName, an ext4 root
+  # taking the rest. The two sizes are arguments; the rest is an ordinary disko layout in
+  # this configuration — override a partition with lib.mkForce, or drop the template and
+  # write your own. The install runs disko's create script either way.
+  layout = builder.lib.diskLayout {
+    inherit device slotName;
+    slotSize = "32M";
+  };
+
   host = import (pkgs.path + "/nixos/lib/eval-config.nix") {
     system = "x86_64-linux";
-    modules = [ configuration diskoModule (import ./layout.nix { inherit device slotName; }) ];
+    modules = [ configuration diskoModule layout ];
   };
 in
 builder.lib.imagesFor {

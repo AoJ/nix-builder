@@ -17,6 +17,7 @@ rec {
         liveIso = label: import ../modules/live-iso.nix { inherit label; face = tools.isoFace; };
         readOnlyStore = { device }:
           import ../modules/read-only-store.nix { inherit (tools) roStore; inherit device; };
+        inherit diskLayout;
       };
 
       front = import ./images-for.nix {
@@ -48,6 +49,12 @@ rec {
     # which).
     installSlot = "/run/slot";
   };
+
+  # The disk layout template: a disko layout for a host that must own a disk but has
+  # nothing particular to say about it. Imported in the host's OWN configuration (next to
+  # disko's module, which the host brings), so every choice in it is visible there and
+  # overridden like any other option. It takes no pkgs — it is plain disko data.
+  diskLayout = import ../modules/disk-layout.nix;
 
   # An evaluated nixosSystem in, the variant data a host record carries out. The front
   # door calls it for you; it is here for a consumer assembling a record by hand.

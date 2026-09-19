@@ -30,7 +30,6 @@ let
     capability-gate = import ./e2e-capability-gate.nix { inherit pkgs compose hosts; };
     zfs-reinstall = import ./e2e-zfs-reinstall.nix { inherit pkgs compose hosts; };
     image-install = import ./e2e-image-install.nix { inherit pkgs compose hosts; };
-    assemble-install = import ./e2e-assemble-install.nix { inherit pkgs compose hosts; };
   };
 
   coverage = import ./coverage.nix {

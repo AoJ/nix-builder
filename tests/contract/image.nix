@@ -2,7 +2,7 @@
 
 let
   inherit (pkgs) lib;
-  image = import ./default.nix { inherit pkgs tools; };
+  image = import ../../blocks/image/default.nix { inherit pkgs tools; };
 
   # Assembled BY HAND. No nixosSystem anywhere, no host anywhere.
   payload = {

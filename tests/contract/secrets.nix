@@ -2,7 +2,7 @@
 
 let
   inherit (pkgs) lib;
-  secrets = import ./default.nix { inherit pkgs tools; };
+  secrets = import ../../blocks/secrets/default.nix { inherit pkgs tools; };
 
   fixture = pkgs.writeText "secret-fixture" "SOME-SECRET-FIXTURE";
   files = [ { target = "/sops.age"; content.file = "${fixture}"; } ];

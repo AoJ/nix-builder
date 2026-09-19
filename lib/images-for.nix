@@ -49,7 +49,7 @@ let
         else lib.head (lib.splitString "/" rootFs.device);
 
       installFinal = {
-        prepare = install.prepare or (if hasDisko then cfg.system.build.diskoScript else null);
+        script = install.script or (if hasDisko then cfg.system.build.diskoScript else null);
         disks = install.disks or
           (if hasDisko then map (d: d.device) (lib.attrValues diskoDisks) else noDisks);
         pool = install.pool or derivedPool;

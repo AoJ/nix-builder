@@ -2,9 +2,9 @@
 
 let
   inherit (pkgs) lib;
-  image = import ../image/default.nix { inherit pkgs tools; };
-  personalize = import ./default.nix { inherit pkgs tools; };
-  fixture = import ./fixture.nix { inherit pkgs; };
+  image = import ../../blocks/image/default.nix { inherit pkgs tools; };
+  personalize = import ../../blocks/personalize/default.nix { inherit pkgs tools; };
+  fixture = import ../../blocks/personalize/fixture.nix { inherit pkgs; };
 
   payload = {
     system = "x86_64-linux";

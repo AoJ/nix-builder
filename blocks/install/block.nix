@@ -14,18 +14,15 @@ in
 
     payload = mkOption {
       description = ''
-        WHAT is delivered, in one of the three shapes a delivery takes. An `image` is a
-        finished disk written to the target as it is — the installed machine is then byte
-        for byte what was tested, and what the image holds is none of this block's
-        business: a NixOS host, another operating system, anything that boots. A `closure`
-        is the same disk's pieces, laid out HERE, so the store partition is sized to the
-        disk actually found rather than to one guessed at build time. A `script` is the
-        host's own recipe for storage no image can hold (a zfs pool, whose identity is a
-        kernel object), and the only shape that hands control to something the host wrote.
+        WHAT is delivered. An `image` is a finished disk written to the target as it is —
+        what it holds is none of this block's business, so it delivers another operating
+        system as well as a NixOS host. A `script` is a recipe that creates the target's
+        storage, and the host's closure installed into it; the recipe is disko's own
+        script, whether the host wrote the layout or took a template.
       '';
       type = types.submodule {
         options = {
-          kind = mkOption { type = types.enum [ "image" "closure" "script" ]; };
+          kind = mkOption { type = types.enum [ "image" "script" ]; };
 
           image = mkOption {
             type = types.nullOr types.package;
@@ -33,57 +30,23 @@ in
             description = "The disk to write, zstd-compressed; streamed to the disk, never unpacked to a file.";
           };
 
-          # What a disk assembled on the target is made of — the same pieces the image
-          # endpoint is built from, handed over as data instead of as a finished disk.
-          esp = mkOption {
-            type = types.nullOr types.package;
-            default = null;
-            description = "The ESP as a finished filesystem, written to the target's first partition unchanged.";
-          };
-          registration = mkOption {
-            type = types.nullOr types.path;
-            default = null;
-            description = "The nix database dump for the carried closure (closureInfo's registration).";
-          };
-          storePathsFile = mkOption {
-            type = types.nullOr types.path;
-            default = null;
-            description = "The list of store paths to copy (closureInfo's store-paths).";
-          };
-          storeLabel = mkOption {
-            type = types.nullOr types.str;
-            default = null;
-            description = "Label of the store filesystem — what the host's own fileSystems entry looks for.";
-          };
-          storeUuid = mkOption {
-            type = types.nullOr types.str;
-            default = null;
-            description = "Its uuid, derived like the image's so the assembled disk carries the same identity.";
-          };
-          slotMiB = mkOption {
-            type = types.nullOr types.ints.positive;
-            default = null;
-            description = "How much of the disk the slot takes; the store gets what is left.";
-          };
-
           toplevel = mkOption {
             type = types.nullOr types.package;
             default = null;
-            description = "The system to install (closure payloads).";
+            description = "The system to install, and the kernel a kexec ending hands over to.";
           };
 
           storePaths = mkOption {
             type = types.listOf types.package;
             default = [ ];
-            description = "What the installer carries, so it can install offline (closure payloads).";
+            description = "What the installer carries, so it can install offline.";
           };
 
-          prepare = mkOption {
+          script = mkOption {
             type = types.nullOr types.package;
             default = null;
-            description = "Brings the target's storage into existence AND mounts it at /mnt. The block does not know its shape.";
+            description = "Creates the target's storage and mounts it at /mnt. The block does not know its shape.";
           };
-
         };
       };
     };
@@ -212,27 +175,18 @@ in
         if p.kind == "image" then {
           image = required "payload.image" p.image;
         }
-        else if p.kind == "closure" then {
-          toplevel = required "payload.toplevel" p.toplevel;
-          esp = required "payload.esp" p.esp;
-          registration = required "payload.registration" p.registration;
-          storePathsFile = required "payload.storePathsFile" p.storePathsFile;
-          storeLabel = required "payload.storeLabel" p.storeLabel;
-          storeUuid = required "payload.storeUuid" p.storeUuid;
-          slotMiB = required "payload.slotMiB" p.slotMiB;
-        }
         else {
           toplevel = required "payload.toplevel" p.toplevel;
-          prepare = required "payload.prepare" p.prepare;
+          script = required "payload.script" p.script;
         };
 
       encrypted =
         if config.encrypted && config.storage != "zfs"
         then throw ("install(${config.name}): encryption is the zfs layout's property (L3)"
           + " — storage=${config.storage} cannot declare it")
-        else if config.encrypted && p.kind != "script"
-        then throw ("install(${config.name}): a ${p.kind} payload creates no pool here, so"
-          + " there is nothing for this block to encrypt")
+        else if config.encrypted && p.kind == "image"
+        then throw ("install(${config.name}): an image is written as it is, so nothing here"
+          + " creates a pool to encrypt")
         else config.encrypted;
 
       # kexec hands over to the system that was just written, so its kernel has to be in
@@ -259,7 +213,6 @@ in
             inherit encrypted payload handover;
             kind = p.kind;
             actionInstall = tools.actionInstall { inherit (config) storage; };
-            inherit (tools) assembleDisk;
             inherit (tools) netbootFace isoFace;
           })
         ];
@@ -277,8 +230,6 @@ in
       # plus, for a kexec ending, the kernel it hands over to.
       storePaths = [ toplevel ]
         ++ (if p.kind == "image" then [ payload.image ]
-            else if p.kind == "closure"
-            then [ payload.toplevel payload.esp payload.registration payload.storePathsFile ]
             else [ payload.toplevel ] ++ p.storePaths)
         ++ lib.optional (handover != null) handover;
       espBinary =

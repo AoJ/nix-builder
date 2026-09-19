@@ -44,14 +44,13 @@ it — and only then: a host with no install script keeps every other endpoint, 
 ## What an install delivers
 
 An install is how a system gets onto a machine, and it is a takeover — the machine may
-have been running anything. **What is delivered comes in three shapes, and this one
+have been running anything. **What is delivered comes in two shapes, and this one
 declaration picks it:**
 
 | shape | when | what reaches the machine |
 |---|---|---|
-| `image` | the host states no install script | its own disk image, written as it is — bit for bit what was tested, and it may hold any operating system at all |
-| `closure` | `install.payload = "assemble"` | the same disk's pieces, laid out on the machine — so the store partition takes the disk actually found, which is what a disk built ahead of time cannot do |
-| `script` | the host states one | the store paths, installed through the host's own recipe — for storage no image can hold, like a zfs pool |
+| `image` | the host describes no disk layout | its own disk image, written as it is — bit for bit what was tested, and it may hold any operating system at all |
+| `script` | the host describes its disk in disko | the store paths, installed through disko’s own script — blocks never reads the layout, it runs it |
 
 **An install replaces what is on the declared disks, every time.** It is not an upgrade:
 installing onto storage that already holds a system would leave a machine that is half one

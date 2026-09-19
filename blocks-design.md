@@ -333,15 +333,20 @@ the image endpoints produce, and the format only decides how the machine is reac
 stick, an iso, a netboot, a kexec into a running kernel. It is also a takeover: the machine
 it lands on may have been running anything, or nothing this world knows about.
 
-**What is delivered comes in three shapes, and a host's own declaration picks one.** An
+**What is delivered comes in two shapes, and a host's own declaration picks one.** An
 `image` is a finished disk written as it is — what it holds is never inspected, so the same
 act delivers another operating system as well as a NixOS host, and what boots is bit for bit
-what was tested. A `closure` is the host's store paths, from which the same disk is assembled
-on the machine — for a target whose real size only the machine knows. A `script` is the
-host's own recipe for storage no image can hold, and it is the only shape that hands control
-to something the host wrote. A host that states a recipe gets `script`; a host that states
-none gets `image`; `closure` is asked for, because nothing in a configuration says the
-difference.
+what was tested. A `script` is a recipe that creates the target's storage, and the host's
+closure installed into it. A host that declares a disk layout gets `script` and the layout's
+own script runs; a host that declares none gets `image`.
+
+**The layout is disko's, and blocks never reads it (DECIDED, aoj 2026-09-19).** A host that
+describes its disk describes it once, in disko, and the install runs disko's own script to
+create and mount it — no translation, no second opinion about what those partitions mean. A
+host that wants a disk but has nothing to say about it takes a template, which it imports
+into its own configuration and can override: then it too has a layout, and there is no
+special case. What blocks still owns is the part disko has no answer for without a virtual
+machine: building the disk as a FILE.
 
 **Its input is a closure, not a system**. Measured against what the current
 installer actually consumes — a disk-preparation step, a mount step, the toplevel, the pool name,

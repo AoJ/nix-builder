@@ -2,8 +2,8 @@
 
 let
   inherit (pkgs) lib;
-  install = import ./default.nix { inherit pkgs tools; };
-  image = import ../image/default.nix { inherit pkgs tools; };
+  install = import ../../blocks/install/default.nix { inherit pkgs tools; };
+  image = import ../../blocks/image/default.nix { inherit pkgs tools; };
 
   # Assembled BY HAND: the extracted values, not a configuration.
   target = pkgs.writeText "target-toplevel" "the system being installed";
@@ -14,7 +14,7 @@ let
       kind = "script";
       toplevel = target;
       storePaths = [ target pkgs.hello ];
-      prepare = pkgs.writeShellScript "prepare" "sgdisk --zap-all /dev/target";
+      script = pkgs.writeShellScript "prepare" "sgdisk --zap-all /dev/target";
     };
     pool = "rpool";
     storage = "zfs";

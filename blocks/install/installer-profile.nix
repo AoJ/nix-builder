@@ -4,7 +4,7 @@
 # (raw/qcow2), the netboot face (kexec/ipxe), or the iso face keyed by the medium's label
 # (iso). Its hardware support is the HOST's declaration (the machine record) — it boots
 # exactly where the host boots, and carries nothing the host did not claim to need.
-{ name, kind, payload, pool, storage, encrypted, slotName, slotFiles, assembleDisk
+{ name, kind, payload, pool, storage, encrypted, slotName, slotFiles
 , rootMode, isoLabel, slotFace, disks, report, machine, actionInstall, completion, handover
 , netbootFace, isoFace }:
 
@@ -22,7 +22,7 @@ let
   # mount or toplevel to name, and says so with empty ones.
   actionArgs =
     if kind == "script"
-    then [ payload.prepare payload.toplevel slotName expectedSlotFiles
+    then [ payload.script payload.toplevel slotName expectedSlotFiles
            storage pool (if encrypted then "true" else "false") ]
     else [ "" "" slotName expectedSlotFiles storage pool "" ];
 
@@ -31,17 +31,6 @@ let
   payloadEnv =
     if kind == "image"
     then "payload_image=${lib.escapeShellArg payload.image} "
-    else if kind == "closure"
-    then lib.concatStringsSep " " [
-      "payload_esp=${lib.escapeShellArg payload.esp}"
-      "payload_registration=${lib.escapeShellArg payload.registration}"
-      "payload_store_paths=${lib.escapeShellArg payload.storePathsFile}"
-      "payload_store_label=${lib.escapeShellArg payload.storeLabel}"
-      "payload_store_uuid=${lib.escapeShellArg payload.storeUuid}"
-      "payload_slot_mib=${toString payload.slotMiB}"
-      "payload_toplevel=${payload.toplevel}"
-      ""
-    ]
     else "";
 
   # Handing over to what was just installed: its kernel rides in the INSTALLER's store,
@@ -149,7 +138,6 @@ in
       StandardError = "journal+console";
     };
     path = [ actionInstall pkgs.systemd ]
-      ++ lib.optional (kind == "closure") assembleDisk
       ++ lib.optional (completion == "kexec") pkgs.kexec-tools;
     # A refused or failed install must terminate the machine, visibly: a report line and a
     # poweroff, so a headless box does not sit wedged and a reboot cannot masquerade as

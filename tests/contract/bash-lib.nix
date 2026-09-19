@@ -9,7 +9,7 @@ pkgs.runCommand "test-bash-lib"
 } ''
   set -euo pipefail
   mkdir lib
-  cp ${./bash-lib.sh} lib/bash-lib.sh
+  cp ${../../lib/bash-lib.sh} lib/bash-lib.sh
   cp ${./bash-lib-test.sh} lib/bash-lib-test.sh
   bash lib/bash-lib-test.sh
   touch "$out"

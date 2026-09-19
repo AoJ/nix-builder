@@ -27,7 +27,7 @@ let
     };
 
   syntheticInstall = {
-    prepare = pkgs.writeShellScript "prepare" "sgdisk --zap-all /dev/target";
+    script = pkgs.writeShellScript "prepare" "sgdisk --zap-all /dev/target";
     pool = "rpool";
     encrypted = false;
     disks = [ "/dev/target" ];
@@ -67,7 +67,7 @@ let
     # outside that set is spelled absolutely. The target is named by the STABLE identity
     # the e2e attaches it with (a virtio serial), so the same extracted values work under
     # every wrapper — a disk-rooted installer shifts /dev/vdX, an identity does not.
-    prepare = pkgs.writeShellScript "prepare-zfs" ''
+    script = pkgs.writeShellScript "prepare-zfs" ''
       set -euo pipefail
       ${zfsPartitions}
       zpool create -f -o ashift=12 -O mountpoint=none -O compression=on rpool "''${disk}-part3"
@@ -83,7 +83,7 @@ let
   # encrypted-install e2e.
   zfsEncInstall = zfsInstall // {
     encrypted = true;
-    prepare = pkgs.writeShellScript "prepare-zfs-enc" ''
+    script = pkgs.writeShellScript "prepare-zfs-enc" ''
       set -euo pipefail
       ${zfsPartitions}
       zpool create -f -o ashift=12 -O mountpoint=none -O compression=on \
@@ -131,7 +131,7 @@ let
       # clears. No hand-rolled partitioning.
       installFinal =
         if diskoInstall then {
-          prepare = runtime.config.system.build.diskoScript;
+          script = runtime.config.system.build.diskoScript;
           pool = "";
           encrypted = false;
           disks = map (d: d.device) (lib.attrValues runtime.config.disko.devices.disk);
@@ -254,22 +254,6 @@ in
       inherit slotName;
     };
 
-  # The CLOSURE delivery: the same host again, asking for its disk to be laid out on the
-  # target instead of carried there finished. The store partition then takes the size of
-  # the disk actually found, which is the one thing a disk built ahead of time cannot do.
-  assemble-install = mk {
-    name = "e2e-assemble-install";
-    modules = [ ./modules/disk-ext4.nix ];
-    storage = "ext4";
-    secrets = withSecrets;
-    inherit slotName;
-    install = {
-      disks = [ targetDevice ];
-      report = reportBin;
-      payload = "assemble";
-      completion = "kexec";
-    };
-  };
 
   # The IMAGE delivery: the same ext4 host, but declaring no install script at all — so
   # what reaches the target is its own disk image, written as it is. Its disk layout is the

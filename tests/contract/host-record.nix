@@ -8,7 +8,7 @@
 
 let
   inherit (pkgs) lib;
-  compose = import ../compose.nix { inherit pkgs tools; };
+  compose = import ../../compose.nix { inherit pkgs tools; };
 
   toplevel = pkgs.writeText "a-toplevel" "the system";
   variant = {
@@ -45,7 +45,7 @@ let
       }];
     };
     install = {
-      prepare = pkgs.writeShellScript "prepare" "true";
+      script = pkgs.writeShellScript "prepare" "true";
       disks = [ "/dev/disk/by-id/example" ];
     };
   };

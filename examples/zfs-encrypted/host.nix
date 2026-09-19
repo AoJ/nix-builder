@@ -74,7 +74,7 @@ builder.lib.imagesFor {
     # The layout: an ESP, the SLOT partition this host reads its secrets from, and the
     # pool. The create takes the passphrase off the published install-slot path, then
     # repoints keylocation at the initrd file the installed system will have.
-    prepare = pkgs.writeShellScript "prepare-zfs-enc" ''
+    script = pkgs.writeShellScript "prepare-zfs-enc" ''
       set -euo pipefail
       disk=${device}
       ${pkgs.gptfdisk}/bin/sgdisk -Z "$disk"

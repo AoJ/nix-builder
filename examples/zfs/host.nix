@@ -51,7 +51,7 @@ builder.lib.imagesFor {
 
     # Both scripts run under the install action's PATH — nix, zfs, util-linux, coreutils —
     # so anything outside that set is spelled absolutely.
-    prepare = pkgs.writeShellScript "prepare-zfs" ''
+    script = pkgs.writeShellScript "prepare-zfs" ''
       set -euo pipefail
       disk=${device}
       ${pkgs.gptfdisk}/bin/sgdisk -Z "$disk"

@@ -27,15 +27,6 @@ in
   fatImageApp = (import ./fat-image.nix { inherit pkgs bashTool; }).app;
   gptDisk = import ./gpt-disk.nix { inherit pkgs bashTool ids; };
   store = import ./store.nix { inherit pkgs bashTool; };
-  # Lays this host's disk out on the target and fills it — the image's own pieces, put
-  # together on the machine that knows how big its disk is.
-  assembleDisk = bashTool {
-    name = "assemble-disk";
-    runtimeInputs = with pkgs; [
-      coreutils util-linux gptfdisk e2fsprogs dosfstools nix sqlite gnused
-    ];
-    text = builtins.readFile ./assemble-disk.sh;
-  };
   actionInstall = { storage }: bashTool {
     name = "action-install";
     runtimeInputs = (with pkgs; [

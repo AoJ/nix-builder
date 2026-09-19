@@ -130,24 +130,12 @@ in
     };
 
     secrets = mkOption {
-      description = ''
-        What lands in the slot. The slot is a FOLDER for this host's secrets: what they
-        are, what they are for and what format they are in is the host's business —
-        blocks carry the bytes to the declared place and never read them. Nothing here
-        produces a secret either; the builder generates no keys.
-      '';
+      description = "What lands in the slot. Blocks carries the bytes and never reads them.";
       type = types.submodule {
         options = {
           delivery = mkOption {
             type = types.listOf (types.enum [ "embedded" "sidecar" "deploy" "external" ]);
-            description = ''
-              The set of ways this host gets its secrets — combinable, and empty is valid
-              (every endpoint still exists and quietly does nothing). `embedded` means the
-              artifact carries them in its slot and phase 2 puts them there; `sidecar` means
-              a separate artifact beside the image. `deploy` and `external` are declarations
-              about what happens outside the builder, and a member with no producer here
-              fails at eval rather than leaving a host to boot without an identity.
-            '';
+            description = "How this host gets its secrets; combinable, and empty is valid.";
           };
           files = mkOption {
             default = [ ];
@@ -156,52 +144,31 @@ in
               options = {
                 target = mkOption {
                   type = types.strMatching "/.*";
-                  description = ''
-                    Where the file lands INSIDE the slot — never a path on the host's own
-                    filesystem. Reaching into a host's storage topology is not blocks' to
-                    do: the host mounts its slot where it likes and reads from there.
-                  '';
+                  description = "Where the file lands INSIDE the slot, never on the host's own filesystem.";
                 };
                 mode = mkOption {
                   type = types.strMatching "0[0-7][0-7][0-7]";
                   default = "0400";
-                  description = ''
-                    The file's permissions, honoured wherever the medium can carry them
-                    (an initrd segment can, and the install action's staging does). A vfat
-                    slot has no per-file permissions at all — there the host's mount
-                    options decide, and this is advisory.
-                  '';
+                  description = "Permissions, where the medium carries them; advisory on vfat.";
                 };
                 content = mkOption {
-                  description = ''
-                    Where the bytes come from — exactly one form, and blocks never looks
-                    at what they mean.
-                  '';
+                  description = "Where the bytes come from — exactly one of these.";
                   type = types.submodule {
                     options = {
                       text = mkOption {
                         type = types.nullOr types.str;
                         default = null;
-                        description = ''
-                          The bytes, declared in nix. They are in the store from that
-                          moment, so this is for material that is ALREADY encrypted — a
-                          sops bundle a host carries in its own data, say.
-                        '';
+                        description = "The bytes, declared in nix — so: already-encrypted material only.";
                       };
                       env = mkOption {
                         type = types.nullOr types.str;
                         default = null;
-                        description = ''
-                          The name of an environment variable the runner reads when it
-                          RUNS. For plaintext material: nothing is written to the store,
-                          and the caller needs no file on disk — which is what a deploy
-                          running straight from a flake has.
-                        '';
+                        description = "An environment variable, read when the runner runs. Nothing touches the store.";
                       };
                       file = mkOption {
                         type = types.nullOr types.str;
                         default = null;
-                        description = "A path the runner reads when it runs, for a caller that does have a file.";
+                        description = "A path, read when the runner runs.";
                       };
                     };
                   };
@@ -215,77 +182,58 @@ in
 
     install = mkOption {
       default = { };
-      description = ''
-        What the install act needs. Consumed only by the `-install` endpoints, so a host
-        with none (a squashfs appliance, L6) states nothing here at all.
-      '';
+      description = "What the install needs. Only the `-install` endpoints read it.";
       type = types.submodule {
         options = {
-          prepare = mkOption {
+          script = mkOption {
             type = types.nullOr types.package;
             default = null;
             description = ''
-              THE INSTALL SCRIPT, and the reason to have one: it brings storage no image
-              can hold into existence and mounts it at /mnt (a zfs pool, whose identity is
-              a kernel object). Declaring it is what makes this host's install carry a
-              closure and install onto storage created on the spot; a host that declares
-              none gets its own disk image written as it is, which is simpler in every way
-              and gives a machine byte for byte what was tested. Runs under the action's
-              PATH (nix, zfs, util-linux, coreutils); anything else is spelled absolutely.
+              Creates storage no image can hold — a zfs pool — and mounts it at /mnt.
+              Declaring one is also what makes this host install through it instead of
+              being delivered as its own disk image. Runs under the action's PATH (nix,
+              zfs, util-linux, coreutils).
             '';
           };
           payload = mkOption {
-            type = types.nullOr (types.either (types.enum [ "assemble" ]) types.attrs);
+            type = types.nullOr types.attrs;
             default = null;
             description = ''
-              What is delivered, when the host wants to say it rather than have it
-              derived. `"assemble"` asks for the same disk to be laid out on the target
-              instead of carried there finished, which is what a machine whose real disk
-              size is only known on the spot wants. An attrset states a payload outright:
-              `{ kind = "image"; image = <zstd-compressed disk>; }` delivers a finished
-              disk from anywhere, including one holding an operating system that is not
-              NixOS at all. Null derives it — a host with an install script installs
-              through it, a host without one gets its own image.
+              What is delivered, stated rather than derived. `"closure"` lays the same
+              disk out on the target, so the store partition takes the disk actually
+              found. An attrset states a payload outright — `{ kind = "image"; image =
+              …; }` delivers a finished disk from anywhere, NixOS or not.
             '';
           };
           completion = mkOption {
             type = types.enum [ "reboot" "poweroff" "kexec" ];
             default = "reboot";
             description = ''
-              How the machine leaves the install. `kexec` hands straight to what was just
-              delivered, which is the one ending a boot medium left in the machine cannot
-              turn into a reinstall loop; `poweroff` stops and waits for someone to pull
-              that medium; `reboot` goes through firmware again.
+              How the machine leaves the install. `kexec` hands straight to what was
+              delivered, so a medium left in the machine cannot start the install again.
             '';
           };
           disks = mkOption {
             type = types.nonEmptyListOf types.str;
             description = ''
-              The whole disks the target lives on, by stable identity (/dev/disk/by-id/…).
-              This is the wipe's blast radius: a create clears exactly these and nothing
-              beside them, and the act refuses outright if one of them carries the running
-              system.
+              The whole disks the target lives on, by stable identity (/dev/disk/by-id/…) —
+              the blast radius: cleared every install, and nothing beside them is touched.
             '';
           };
           pool = mkOption {
             type = types.str;
             default = "";
-            description = "The zfs pool the act probes, mismatch-checks and exports; empty for a plain filesystem.";
+            description = "The zfs pool the act exports before leaving; empty for a plain filesystem.";
           };
           encrypted = mkOption {
             type = types.bool;
             default = false;
-            description = ''
-              Whether the target pool is encrypted — the layout's own property (L3). It is
-              a refusal criterion: an encrypted host whose pool passphrase was not
-              delivered is stopped BEFORE any wipe, since the create would otherwise fail
-              with the disk already cleared.
-            '';
+            description = "Whether the target pool is encrypted — the layout's own property (L3).";
           };
           report = mkOption {
             type = types.nullOr types.str;
             default = null;
-            description = "An executable the installer calls with one line per milestone; null reports nothing.";
+            description = "An executable the installer calls with one line per milestone.";
           };
         };
       };

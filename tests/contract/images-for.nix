@@ -5,10 +5,10 @@
 
 let
   inherit (pkgs) lib;
-  api = import ./api.nix;
+  api = import ../../lib/api.nix;
   inherit (api.mk { inherit pkgs; }) recordFor imagesFor;
 
-  diskoModule = (import ../disko-pin.nix) + "/module.nix";
+  diskoModule = (import ../../disko-pin.nix) + "/module.nix";
   device = "/dev/disk/by-id/example-main";
 
   evalHost = modules: import (pkgs.path + "/nixos/lib/eval-config.nix") {
@@ -80,7 +80,7 @@ let
   diskoRecord = record diskoHost { };
   zfsRecord = record zfsHost {
     install = {
-      prepare = pkgs.writeShellScript "prepare" "true";
+      script = pkgs.writeShellScript "prepare" "true";
       disks = [ device ];
     };
   };
@@ -93,7 +93,7 @@ assert lib.assertMsg (diskoRecord.variants.runtime.storage == "ext4")
 assert lib.assertMsg (diskoRecord.install.disks == [ device ])
   "the wipe's blast radius is the disko layout's own device list";
 assert lib.assertMsg
-  (diskoRecord.install.prepare == diskoHost.config.system.build.diskoScript)
+  (diskoRecord.install.script == diskoHost.config.system.build.diskoScript)
   "a disko host does not write an install script: disko generates it";
 assert lib.assertMsg (diskoRecord.install.pool == "")
   "a plain filesystem has no pool";

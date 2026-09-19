@@ -2,7 +2,7 @@
 
 let
   inherit (pkgs) lib;
-  fixture = import ./blocks/personalize/fixture.nix { inherit pkgs; };
+  fixture = import ../../blocks/personalize/fixture.nix { inherit pkgs; };
 
   # A synthetic host, assembled by hand: two variants, because a live format packs a
   # DIFFERENT toplevel. No nixosSystem anywhere.
@@ -54,7 +54,7 @@ let
       }];
     };
     install = {
-      prepare = pkgs.writeShellScript "prepare" "sgdisk --zap-all /dev/target";
+      script = pkgs.writeShellScript "prepare" "sgdisk --zap-all /dev/target";
       pool = "rpool";
       encrypted = false;
       disks = [ "/dev/target" ];

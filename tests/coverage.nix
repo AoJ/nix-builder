@@ -50,7 +50,7 @@ let
     ext4 = {
       image-raw = "booted";
       image-iso = "booted";
-      image-qcow2 = "eval-only";
+      image-qcow2 = "booted";
       image-kexec = "booted";
       image-ipxe = "eval-only";
       image-raw-install = "eval-only";
@@ -71,7 +71,7 @@ let
     };
     memory = {
       image-raw = "booted";
-      image-iso = "eval-only";
+      image-iso = "booted";
       image-qcow2 = "eval-only";
       image-kexec = "eval-only";
       image-ipxe = "eval-only";

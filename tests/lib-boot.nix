@@ -4,7 +4,7 @@
 # attach it, and read it with mtools after qemu exits. `expect` greps ./result.
 { pkgs }:
 
-{ name, image, expect, prepare ? "", extraDrives ? "" }:
+{ name, image, expect, prepare ? "", extraDrives ? "", imageFormat ? "raw" }:
 
 pkgs.runCommand name
   {
@@ -23,7 +23,7 @@ pkgs.runCommand name
     timeout 600 qemu-system-x86_64 -enable-kvm -cpu host -m 1024 -smp 2 \
       -drive if=pflash,format=raw,readonly=on,file=${pkgs.OVMF.fd}/FV/OVMF_CODE.fd \
       -drive if=pflash,format=raw,file=vars.fd \
-      -drive if=virtio,format=raw,file=disk.img \
+      -drive if=virtio,format=${imageFormat},file=disk.img \
       -drive if=none,id=eout,format=raw,file=result.img \
       -device virtio-blk-pci,drive=eout,serial=e2eout \
       ${extraDrives} \

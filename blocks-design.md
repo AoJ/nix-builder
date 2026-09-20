@@ -68,15 +68,22 @@ DECIDED (aoj):
 - **L1 — `format = iso` ⇒ `runtime.mode = memory`, `runtime.storage = squashfs`.** An ISO is
   read-only, so its root is always an overlay in RAM. A ZFS host's ISO simply does not use the
   host's storage declaration for root.
-- **L2 — a ZFS pool is created by the install, never by the image (for now).** A pool is a kernel object
-  with its own GUID, hostid and feature flags; it cannot come out of the nix store. The
-  deliverable for a `storage = zfs` host is an `-install` image, and `#image-raw` /
-  `#image-qcow2` for such a host is an **unsupported combination** — a hole the matrix names,
-  not an endpoint that quietly means something else.
-- **L3 — encryption is a property of the storage layout, and follows L2.** No `#image-*` is ever
-  encrypted. Correctness, not tidiness: a pool created with a store-visible placeholder
-  passphrase is compromised for its whole life — `zfs change-key` rewrites neither the master
-  key nor the previous wrapped key on disk (measured).
+- **L2 (amended, aoj) — a ZFS pool is a kernel object: the install creates it, or the format-VM
+  does at build — never userspace assembly.** A pool has its own GUID, hostid and feature flags;
+  it cannot come out of `mke2fs -d`-style assembly. But there is a kernel that can make one: the
+  format-VM runs disko over the host's OWN disko layout in a VM on the RUNNER's architecture (the
+  layout is data, so its scripts are generated against runner pkgs — an aarch64 image formats on
+  an x86 box with no binfmt), sets the target's hostid before `zpool create` so first boot imports
+  without `-f`, and injects the closure without executing one target-arch binary. So `#image-raw`
+  / `#image-qcow2` for an unencrypted zfs host WITH a disko layout are real endpoints; a zfs host
+  with no layout keeps the hole (refused at eval, named), and the encrypted pool is L3's.
+- **L3 — encryption is a property of the storage layout, and the encrypted pool is install-only.**
+  No `#image-*` is ever encrypted. Correctness, not tidiness: a pool created with a store-visible
+  placeholder passphrase is compromised for its whole life — `zfs change-key` rewrites neither the
+  master key nor the previous wrapped key on disk (measured). The format-VM makes UNENCRYPTED
+  pools (L2); an encrypted zfs host's runtime disk images stay holes the composer names, and its
+  pool is created at install time with the real passphrase (delivered through the slot, read by
+  disko's create off the published install-slot path).
 
 Derived:
 
@@ -140,16 +147,21 @@ must not be cached.
 
 ### The matrix
 
-Backend is assembly everywhere — no VM emulation in the image path.
+A disk-rooted host with a disko layout — ext4 and zfs alike — is formatted by the format-VM (a
+RUNNER-arch VM, never emulation), so one declaration shapes the runtime fileSystems, the image
+and the install. Assembly remains the backend for everything userspace can generate whole: the
+squashfs formats, the wrapper images (an installer's disk is its own, not the host's), and a
+layout-less ext4. No target-arch code executes on any image path.
 
 | host runtime | `#image-iso` | `#image-raw` / `-qcow2` | `#image-kexec` / `-ipxe` | `#image-*-install` |
 |---|---|---|---|---|
 | memory / squashfs | yes | yes | yes | **unsupported (L6)** — deploy `#image-*` itself |
 | disk / ext4 | yes (L1) | yes | yes (L4) | yes |
-| disk / zfs | yes (L1) | **unsupported (L2)** — use `#image-raw-install` | yes (L4) | yes |
+| disk / zfs | yes (L1) | yes — format-VM (unencrypted + layout; encrypted is **L3**, no-layout refuses) | yes (L4) | yes |
 
-Every hole is a law, not a per-host switch: it is a property of `runtime.storage`, reads the
-same for every host that has one, and names its own replacement.
+Every hole is a law, not a per-host switch: it is a property of `runtime.storage` (and, for the
+zfs runtime images, of `install.encrypted`), reads the same for every host that has one, and
+names its own replacement.
 
 ## The blocks
 
@@ -207,9 +219,10 @@ Three consequences, derived in the plan and kept:
   it is asking for, and **`image` validates that the shape it was handed is legal for the format
   it was asked for** — a wrong composition fails at eval, in `image`, instead of at boot on the
   machine. On the `-install` half the shape is the **wrapper's own** (its store carries the
-  installer and the host's closure); the target's storage never shapes it, which is why the L2
-  hole does not exist there — and why the composer names that hole itself, at eval, for the
-  runtime half of a zfs host.
+  installer and the host's closure); the target's storage never shapes it, and the wrapper's
+  disk takes no layout, so it stays on assembly. The runtime disk half of a zfs host is the
+  format-VM's (L2 amended): real for an unencrypted host with a layout, and a hole the composer
+  names at eval only for the encrypted one (L3) or one that declared no layout.
 - **The root mode travels with the payload and `image` validates it the same way**: `iso` /
   `kexec` / `ipxe` cannot boot a disk-rooted system, so `(format ⇒ rootMode)` fails at eval like
   a wrong store shape. `install` takes `rootMode` too, and a variant that does not exist refuses
@@ -288,6 +301,14 @@ the same size and not the same bytes, so "the same bytes" holds for two builds o
 architecture and is not a claim about an artifact built in two places. That matters for the
 aarch64 hosts, whose images are built emulated or on a foreign builder.
 
+**The format-VM's outputs carry identity but not same-bytes.** A pool made in the VM generates
+its own vdev GUID, stamps birth-TXG times, and lays blocks down as the kernel schedules the
+writes (txg sync, writeback) — none of which has a seed. Every stamp the tools DO expose is
+pinned (a fixed VM rtc, `SOURCE_DATE_EPOCH` into every mkfs, `zpool reguid -g` to a name-derived
+guid, the nix db normalised), so two builds give the same CONTENT; same-bytes is the assembly
+path's alone. This is the price of L2's amendment, taken knowingly (aoj): a kernel-made
+filesystem beats a byte-stable one that cannot exist.
+
 ## image
 
 Packs one system into one format. Everything about how a format is made is inside.
@@ -306,8 +327,12 @@ per architecture, loader entries, GPT type codes, partition sizes and offsets, f
 parameters, and which mechanism a given format is built by. `kexec` and `ipxe` are one payload
 with two loader descriptors — that is one branch inside the block, not two formats.
 
-How the formats are made, as built: `raw` / `qcow2` are the GPT assembly — ESP, store partition,
-optional slot partition; `qcow2` is the same disk in a different envelope. `iso` puts the kernel,
+How the formats are made, as built: `raw` / `qcow2` are the format-VM whenever the caller hands
+over a disko layout (a HOST's disk endpoints; zfs requires it, ext4 uses it when present) —
+disko formats a blank disk from that layout inside a runner-arch VM and the closure/db/profile/
+ESP content is injected as data, no target-arch code. Without a layout they are the GPT assembly
+— ESP, store partition, optional slot partition — which is what every installer wrapper stays on,
+and what a zfs shape refuses. `qcow2` is the same disk in a different envelope either way. `iso` puts the kernel,
 initrd and loader entries INSIDE the ESP image, points an El Torito record at it, and marks the
 same image in a GPT so the file also boots dd'd to a stick (the nixpkgs pattern); the iso9660
 itself carries the squashfs store and the slot file. `kexec` / `ipxe` are one tree — kernel, the
@@ -596,9 +621,11 @@ a mistyped declaration must fail eval, never silently land on a fallback. Where 
 owns the disk, the same declaration names the layout's slot partition — one binding, read by
 both the layout and the composer; the ext4 layout does exactly this, a vfat slot partition
 disko formats beside the root. Where there is no layout — `iso` has no layout, `kexec` /
-`ipxe` have no filesystem at all — `image` makes the slot in the shape it is already making. A
-zfs host still has no `#image-raw` to put a slot in (the pool comes from the install), so that
-combination stays the hole the matrix names.
+`ipxe` have no filesystem at all — `image` makes the slot in the shape it is already making. An
+unencrypted zfs host with a disko layout now HAS an `#image-raw` (the format-VM makes it), and
+its slot is the layout's own partition — the same binding the ext4 layout uses. Only the
+encrypted zfs host still has no runtime disk image to put a slot in (L3), so that combination
+stays the hole the matrix names.
 
 The rule is not enforced in general, and it does not need to be: **it is conditional on the host
 asking for it.** A host that declares no embedded delivery owes nothing. A host that declares one
@@ -709,8 +736,13 @@ the design, not the test author's taste.
 3. The schema seam is data-only so far: `requires.secrets` → the files/keyTarget record, and
    driving the composer's host records through the seam, remain for integration. Further
    changes are expected here (aoj), too early to describe.
-4. Building (not just evaluating) arm artifacts on an x86 box via binfmt — parked; measured
-   elsewhere to boot in tens of seconds, so it is a capacity question, not a feasibility one.
+4. arm artifacts on an x86 box. The image PATH no longer needs the target arch — the format-VM
+   runs runner-native and injects the closure as data, proven by eval (an arm `#image-raw`'s
+   derivation is `system = x86_64-linux` while its packed toplevel is aarch64). What remains is
+   BUILDING the aarch64 closure: the kernel and glibc substitute from cache, but the per-config
+   derivations (systemd units, `/etc/*`) carry `system = aarch64-linux` and nix refuses them on
+   x86 — so this still needs `boot.binfmt.emulatedSystems` (build via qemu-user, not full-system
+   emulation) or a dedicated native aarch64 builder. Parked on that capacity, not on feasibility.
 5. Integration into the repo: delete lib/50_install (now `action-install` in blocks), retire
    nixos-generators and the old image paths, and drive real host records through the schema
    seam. This is the last track and the one the withdrawn branch got wrong by leaving deletions

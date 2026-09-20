@@ -1,26 +1,29 @@
 # A zfs server
 
-A zfs pool is a kernel object with its own GUID, hostid and feature flags — it cannot
-come out of the nix store. So for a zfs host the image is not the deliverable: **the
-installer is** (law L2). Asking this host for `image-raw` or `image-qcow2` does not
-produce something subtly wrong, it refuses at eval with the law named.
+A zfs pool is a kernel object with its own GUID, hostid and feature flags — it cannot come
+out of userspace assembly. But there IS a kernel that can make one: the format-VM, a VM on
+the runner's own architecture. So for a zfs host the runtime disk image is real (law L2, as
+amended) — `image-raw` formats a blank disk from this host's disko layout in that VM and
+injects the closure as data, no target-arch code, so an aarch64 image builds on an x86 box.
+The one thing it will not build is an *encrypted* pool: that stays install-only (L3), see
+[`../zfs-encrypted/`](../zfs-encrypted/).
 
 ## What this host states beyond the plain case
 
 The configuration says `fileSystems."/" = { device = "rpool/root"; fsType = "zfs"; }`, and
 that alone tells the builder the storage is zfs and the pool is `rpool`. What it cannot
-tell is how that pool comes into existence — a pool is not a disko layout — so this host
-states its own recipe:
+tell is how that pool is laid out — so this host imports `builder.lib.diskLayoutZfs` next
+to disko's module, exactly as the ext4 host imports `diskLayout`:
 
 | stated | what it is |
 |---|---|
-| `install.prepare` | the install script: partition, `zpool create`, `zfs create`, mount at `/mnt` |
-| `install.disks` | what the install clears; with a disko layout this would be read from it |
+| `builder.lib.diskLayoutZfs { device; slotName; }` | ESP, the vfat slot, the rest one pool with a legacy root — plain disko data in this configuration, overridden like any option |
+| the zfs boot facts | `networking.hostId`, `forceImportRoot`, `devNodes`, and the root/boot mounts — a zfs root's runtime particulars the host keeps (the template leaves `enableConfig` off) |
 
-Stating that script is also what picks this host's delivery: a host with a recipe carries a
-closure and installs through it, a host without one gets its own disk image written as it
-is. The script runs under the act's own PATH (nix, zfs, util-linux, coreutils); anything
-else is spelled absolutely, as in `host.nix`.
+Having a disko layout is what makes ONE declaration feed three things: the install runs
+disko's own create script through it, the format-VM formats the runtime image from the same
+data, and the disk list a create may clear comes from it. Nothing hand-rolled — the pool
+the installed system imports was made by the same disko every other target uses.
 
 ## Three installers, one host
 

@@ -10,8 +10,8 @@ They are also runnable (`nix build`), but that is not the point of them.
 | example | the host it describes | what it gets |
 |---|---|---|
 | [`ext4/`](ext4/) | plain disk host, the layout template owns the disk and the slot | every runtime image, every installer, sidecars, phase 2 |
-| [`zfs/`](zfs/) | zfs server — the pool is created by the install (L2) | installers only; the runtime disk images are holes |
-| [`zfs-encrypted/`](zfs-encrypted/) | the same, encrypted (L3): passphrase at create, key delivered for boot | installers + the phase-2 runner they need |
+| [`zfs/`](zfs/) | zfs server — the pool is made in a runner-arch VM from the host's layout | every runtime image (the format-VM builds `image-raw`), every installer, phase 2 |
+| [`zfs-encrypted/`](zfs-encrypted/) | the same, encrypted (L3): the runtime image is a hole, the pool is created at install | installers + the phase-2 runner they need |
 | [`memory/`](memory/) | squashfs appliance — the image IS the deliverable (L6) | runtime images only; it has no installer at all |
 
 ## What is read from the host, and what you state

@@ -15,21 +15,22 @@ other secret does.
 | it enters the declaration | `secrets.files` — one more file in the same delivery, named by this host | `content.file` here; a deploy holding it in a variable would say `content.env` |
 | phase 2 writes it | the personalize runner | the installer artifact's slot, beside the host key |
 | the installer lays the slot out | the install act | `builder.lib.paths.installSlot` — the builder's own path, in RAM |
-| the pool is created with it | this host's `install.prepare` | `keylocation=file://${installSlot}/pool.pass`, then repointed at the initrd path |
+| the pool is created with it | disko's create script, from the layout template's `encryption` data | `keylocation=file://${installSlot}/pool.pass`, then a postCreateHook repoints it at the initrd path |
 | the act fills the target's slot | the install act | the partition named `slotName` in this host's layout |
 | the bootloader carries it | `boot.initrd.secrets`, reading this host's own slot mount | inside the initrd on the ESP |
 | stage 1 unlocks with it | zfs, because `keylocation` names that initrd path | — |
 
 **Nothing in that chain tells the builder what the file is.** It carries bytes to a name
-this host chose; every line that knows `pool.pass` is a passphrase is this host's own —
-its `prepare`, its slot mount, its `boot.initrd.secrets`. [`host.nix`](host.nix) binds
-them through two `let` values (`slotMount`, `poolKeyInitrd`) so the agreement is visible
-in one place.
+this host chose; every line that knows `pool.pass` is a passphrase is this host's own — the
+layout's `encryption` data, its slot mount, its `boot.initrd.secrets`. [`host.nix`](host.nix)
+binds them through two `let` values (`slotMount`, `poolKeyInitrd`) so the agreement is
+visible in one place.
 
 One ordering constraint worth knowing: the bootloader step that bakes the initrd secret
-runs **during** `nixos-install`, so this host's `prepare` mounts its slot under `/mnt`
-before that — and the act, finding the partition already mounted, fills it there rather
-than mounting it a second time.
+runs **during** `nixos-install`, so the slot has to be mounted under `/mnt` before that.
+The layout template gives the slot partition a `slotMount`, so disko mounts it at create
+time — and the act, finding the partition already mounted, fills it there rather than
+mounting it a second time.
 
 There is no prompt anywhere, deliberately: full automation is the goal, and a host that
 wants an interactive unlock changes its layout, not its delivery.

@@ -16,6 +16,7 @@ let
   e2e = {
     raw-boot = import ./e2e-raw-boot.nix { inherit pkgs compose hosts; };
     zfs-raw-boot = import ./e2e-zfs-raw-boot.nix { inherit pkgs compose hosts; };
+    zfs-qcow2-boot = import ./e2e-zfs-qcow2-boot.nix { inherit pkgs compose hosts; };
     qcow2-boot = import ./e2e-qcow2-boot.nix { inherit pkgs compose hosts; };
     memory-iso-boot = import ./e2e-memory-iso-boot.nix { inherit pkgs compose hosts; };
     ext4-raw-install = import ./e2e-ext4-raw-install.nix { inherit pkgs compose hosts; };

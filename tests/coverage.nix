@@ -93,7 +93,7 @@ let
     };
     zfs = {
       image-raw = "booted";
-      image-qcow2 = "eval-only";
+      image-qcow2 = "booted";
       image-iso = "eval-only";
       image-kexec = "eval-only";
       image-ipxe = "eval-only";

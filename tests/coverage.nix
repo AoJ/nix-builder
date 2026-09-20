@@ -102,7 +102,7 @@ let
       image-iso-install = "booted";
       image-kexec-install = "booted";
       image-ipxe-install = "eval-only";
-      image-raw-install-inmemory = "eval-only";
+      image-raw-install-inmemory = "booted";
       image-qcow2-install-inmemory = "eval-only";
       image-secrets-vfat = "eval-only";
       image-secrets-iso = "eval-only";
@@ -211,7 +211,7 @@ let
       image-qcow2 = "eval-only";
       image-kexec = "eval-only";
       image-ipxe = "eval-only";
-      image-raw-install = "eval-only";
+      image-raw-install = "booted";
       image-qcow2-install = "eval-only";
       image-iso-install = "eval-only";
       image-kexec-install = "booted";

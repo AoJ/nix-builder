@@ -61,6 +61,11 @@ let
     in
     {
       inherit name slotName;
+      # The format-VM's inputs, read from the configuration: the disko layout as DATA (only
+      # a host that imports the disko module has one), and the hostId the pool is born with.
+      layout =
+        if hasDisko then { disko.devices = cfg.disko.devices; } else null;
+      hostId = cfg.networking.hostId or null;
       system = host.pkgs.stdenv.hostPlatform.system;
       variants = {
         runtime = extract host // { inherit storage; };

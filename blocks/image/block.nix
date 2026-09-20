@@ -54,7 +54,7 @@ in
     };
 
     storeShape = mkOption {
-      type = types.enum [ "ext4" "squashfs" ];
+      type = types.enum [ "ext4" "squashfs" "zfs" ];
       description = "Picked by the composer, which knows the format it is asking for; validated here.";
     };
 
@@ -66,6 +66,23 @@ in
         holds no claim on any disk). Required for raw/qcow2; null for the formats whose
         placement is fixed by what they are.
       '';
+    };
+
+    layout = mkOption {
+      type = types.nullOr types.raw;
+      default = null;
+      description = ''
+        The host's disko layout, as DATA ({ disko.devices = …; }) — read by the disk
+        formats whose store shape needs a kernel to make (zfs always; ext4 when the host
+        declares a layout): the format-VM formats a blank disk from it and the closure is
+        injected with no target-arch execution. Null falls back to userspace assembly.
+      '';
+    };
+
+    hostId = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      description = "The target's networking.hostId — a zpool is born with it (no import -f).";
     };
 
     slot = mkOption {
@@ -112,8 +129,8 @@ in
       # The composer picked shape and root mode; a wrong composition fails HERE, at eval,
       # not at boot.
       legal = {
-        raw = [ "ext4" "squashfs" ];
-        qcow2 = [ "ext4" "squashfs" ];
+        raw = [ "ext4" "squashfs" "zfs" ];
+        qcow2 = [ "ext4" "squashfs" "zfs" ];
         iso = [ "squashfs" ];
         kexec = [ "squashfs" ];
         ipxe = [ "squashfs" ];
@@ -164,7 +181,7 @@ in
         sizeMiB = config.slot.sizeMiB;
       };
 
-      espImg = esp {
+      espPart = esp {
         inherit (config) name system;
         bootloader = config.espBinary;
         entries = [{
@@ -172,6 +189,35 @@ in
           title = config.name;
           inherit (config) kernel initrd kernelParams;
         }];
+      };
+      espImg = espPart.img;
+
+      # The kernel-made store shapes: a zfs disk cannot come out of userspace assembly, so
+      # the format-VM makes it — disko formats a blank disk from the host's layout, and the
+      # closure is injected as data. ext4 takes this path too when the host handed over a
+      # layout (one layout for runtime, image and install); the wrappers, whose disk is
+      # their own, never do and keep the assembly. The slot must be the LAYOUT's to give
+      # here: this path adds no partitions, and a slot the layout does not label is a slot
+      # personalize will never find.
+      vmPath = diskFormat && placement == "partition"
+        && (shape == "zfs" || (shape == "ext4" && config.layout != null));
+      vmLayout =
+        if config.layout == null
+        then throw ("image ${config.name}: a ${shape} disk is formatted from the host's"
+          + " disko layout and none was declared — deploy #image-${config.format}-install")
+        else if config.slot != null && !lib.any
+          (d: lib.any (p: (p.label or "") == config.slot.name)
+            (lib.attrValues (d.content.partitions or { })))
+          (lib.attrValues (config.layout.disko.devices.disk or { }))
+        then throw ("image ${config.name}: the host asked for embedded delivery, but its"
+          + " layout labels no '${config.slot.name}' partition for the slot")
+        else config.layout;
+      vmDisk = tools.formatVm {
+        inherit (config) name hostId;
+        layout = vmLayout;
+        storePaths = config.storePaths;
+        profile = config.toplevel;
+        espFiles = espPart.files;
       };
 
       disk = tools.gptDisk {
@@ -203,7 +249,7 @@ in
         storeImg = store.img;
         slotName = null;
       };
-      espInmemory = esp {
+      espInmemory = (esp {
         inherit (config) name system;
         bootloader = config.espBinary;
         entries = [{
@@ -213,7 +259,7 @@ in
           initrd = "${treeInmemory}/initrd";
           inherit (config) kernelParams;
         }];
-      };
+      }).img;
       diskInmemory = tools.gptDisk {
         inherit (config) name;
         partitions = [
@@ -223,7 +269,10 @@ in
         };
       };
 
-      rawFile = if placement == "initrd" then diskInmemory else disk;
+      rawFile =
+        if placement == "initrd" then diskInmemory
+        else if vmPath then vmDisk
+        else disk;
 
       byFormat = {
         raw = {

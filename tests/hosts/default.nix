@@ -34,71 +34,23 @@ let
     report = null;
   };
 
-  # The zfs layout, written out by hand because a pool is not a disko layout: an ESP, the
-  # SLOT partition the installed host reads its secrets from, and the pool. The slot is
-  # part of the layout exactly like the ESP is — the install fills it, the host mounts it.
-  zfsPartitions = ''
-    disk=${targetDevice}
-    ${pkgs.gptfdisk}/bin/sgdisk -Z "$disk"
-    ${pkgs.gptfdisk}/bin/sgdisk -n 1:0:+512M -t 1:ef00 -c 1:ESP "$disk"
-    ${pkgs.gptfdisk}/bin/sgdisk -n 2:0:+8M -t 2:8300 -c 2:${slotName} "$disk"
-    ${pkgs.gptfdisk}/bin/sgdisk -n 3:0:0 -t 3:bf01 -c 3:zfs "$disk"
-    ${pkgs.systemd}/bin/udevadm settle
-    ${pkgs.dosfstools}/bin/mkfs.fat -F 32 -n ESP "''${disk}-part1"
-    ${pkgs.dosfstools}/bin/mkfs.fat -n SLOT "''${disk}-part2"
-  '';
-  zfsMountTail = ''
-    mkdir -p /mnt
-    mount -t zfs rpool/root /mnt
-    mkdir -p /mnt/boot
-    mount ${targetDevice}-part1 /mnt/boot
-  '';
-
-  # The zfs host's REAL extracted install values: its install script creates the pool and
-  # mounts it at /mnt — the diskoScript role, written by hand because a pool is not a disko
-  # layout. The target disk is named here because these values are the host's own; nothing
-  # generic knows it.
-  zfsInstall = {
-    pool = "rpool";
-    encrypted = false;
-    disks = [ targetDevice ];
-    report = reportBin;
-    # Runs under the install action's PATH (nix, zfs, util-linux, coreutils); anything
-    # outside that set is spelled absolutely. The target is named by the STABLE identity
-    # the e2e attaches it with (a virtio serial), so the same extracted values work under
-    # every wrapper — a disk-rooted installer shifts /dev/vdX, an identity does not.
-    script = pkgs.writeShellScript "prepare-zfs" ''
-      set -euo pipefail
-      ${zfsPartitions}
-      zpool create -f -o ashift=12 -O mountpoint=none -O compression=on rpool "''${disk}-part3"
-      zfs create -o mountpoint=legacy rpool/root
-      ${zfsMountTail}
-    '';
+  # The zfs layout template, imported alongside disko's module — the ONE declaration the
+  # install (diskoScript) and the runtime image (format-VM) both read. Encryption is data:
+  # created reading the install-slot passphrase, then repointed at the initrd path. The
+  # E2E-POOL-ENCRYPTION witness rides the pool's postCreateHook, where the create now lives.
+  zfsLayout = (import ../../lib/api.nix).diskLayoutZfs {
+    device = targetDevice;
+    inherit slotName;
   };
-
-  # L3 in practice: the pool is created encrypted with the passphrase that rode the slot —
-  # one more file in the same embedded delivery (DECIDED: the bricks combine). Which file
-  # that is, is this host's own knowledge: it reads it off the published install-slot path,
-  # and blocks never learns what `pool.pass` means. The witness line is read back by the
-  # encrypted-install e2e.
-  zfsEncInstall = zfsInstall // {
-    encrypted = true;
-    script = pkgs.writeShellScript "prepare-zfs-enc" ''
-      set -euo pipefail
-      ${zfsPartitions}
-      zpool create -f -o ashift=12 -O mountpoint=none -O compression=on \
-        -O encryption=on -O keyformat=passphrase \
-        -O keylocation=file://${installSlot}/pool.pass rpool "''${disk}-part3"
-      zfs set keylocation=file://${poolKeyInitrd} rpool
-      ${reportBin} "E2E-POOL-ENCRYPTION $(zfs get -H -o value encryption rpool)"
-      zfs create -o mountpoint=legacy rpool/root
-      ${zfsMountTail}
-      # This host reads its passphrase out of the slot at BOOT (an initrd secret), and
-      # the bootloader step that bakes it in runs during the install — so the slot has to
-      # be mounted where this host says it lives before nixos-install runs.
-      mkdir -p /mnt${slotMount}
-      mount ${targetDevice}-part2 /mnt${slotMount}
-    '';
+  zfsEncLayout = (import ../../lib/api.nix).diskLayoutZfs {
+    device = targetDevice;
+    inherit slotName slotMount;
+    encryption = {
+      keyInstall = "${installSlot}/pool.pass";
+      keyBoot = poolKeyInitrd;
+    };
+    poolPostCreate =
+      ''${reportBin} "E2E-POOL-ENCRYPTION $(zfs get -H -o value encryption rpool)"'';
   };
 
   noSecrets = {
@@ -118,7 +70,7 @@ let
   };
 
   mk = { name, modules, storage, secrets, slotName, install ? syntheticInstall,
-         system ? "x86_64-linux", diskoInstall ? false }:
+         system ? "x86_64-linux", diskoInstall ? false, installOverrides ? { } }:
     let
       runtime = evalHost system ([
         ./modules/base.nix
@@ -128,7 +80,8 @@ let
       ] ++ modules);
       # A disko host's install script IS disko's own create script, so the same layout that
       # boots the host also formats it, and the layout's own device list is what the wipe
-      # clears. No hand-rolled partitioning.
+      # clears. No hand-rolled partitioning. installOverrides carries what the layout cannot
+      # say (the pool the action exports, whether the target is encrypted).
       installFinal =
         if diskoInstall then {
           script = runtime.config.system.build.diskoScript;
@@ -136,7 +89,7 @@ let
           encrypted = false;
           disks = map (d: d.device) (lib.attrValues runtime.config.disko.devices.disk);
           report = reportBin;
-        } else install;
+        } // installOverrides else install;
       # The real extendModules step: each live variant is the host plus a face module,
       # evaluated by the composer's side of the world — never inside a block. There is one
       # variant per live format; no generic "live" fallback, so a missing one is an eval
@@ -144,9 +97,17 @@ let
       liveNetboot = runtime.extendModules {
         modules = [ (import ../../modules/live-netboot.nix { face = tools.netbootFace; }) ];
       };
+      # The format-VM's inputs, extracted like everything else: the disko layout as DATA
+      # (only hosts that import the disko module have one), and the hostId the pool is born
+      # with. Null for a host with neither.
+      layout =
+        if (runtime.config.disko.devices.disk or { }) != { }
+        then { disko.devices = runtime.config.disko.devices; }
+        else null;
+      hostId = runtime.config.networking.hostId or null;
     in
     {
-      inherit name secrets system slotName;
+      inherit name secrets system slotName layout hostId;
       variants = {
         runtime = extract runtime // { inherit storage; };
         liveNetboot = extract liveNetboot;
@@ -181,18 +142,22 @@ in
 
   zfs = mk {
     name = "e2e-zfs";
-    modules = [ ./modules/disk-zfs.nix ];
+    # disk-zfs.nix keeps the runtime truth (fileSystems, hostId, zfs boot options); the
+    # layout template (enableConfig off) adds the disko data the install and the format-VM
+    # read. ONE declaration, three consumers.
+    modules = [ ./modules/disk-zfs.nix diskoModule zfsLayout ];
     storage = "zfs";
     secrets = withSecrets;
     inherit slotName;
-    install = zfsInstall;
+    diskoInstall = true;
+    installOverrides = { pool = "rpool"; };
   };
 
   zfs-enc = mk {
     name = "e2e-zfs-enc";
     # Its own machine identity: the reinstall e2e replaces the zfs host with this one and
     # a shared hostId would understate what a real replacement changes.
-    modules = [ ./modules/disk-zfs.nix {
+    modules = [ ./modules/disk-zfs.nix diskoModule zfsEncLayout {
       networking.hostId = lib.mkForce "1badb002";
       # THE HOST's unlock story, none of which blocks knows: its slot partition mounts
       # here, and the initrd carries the passphrase from it — the file this host put in
@@ -212,7 +177,8 @@ in
       }];
     };
     inherit slotName;
-    install = zfsEncInstall;
+    diskoInstall = true;
+    installOverrides = { pool = "rpool"; encrypted = true; };
   };
 
   plain = mk {

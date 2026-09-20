@@ -42,12 +42,13 @@ let
     storePaths = [ v.toplevel ];
   };
 
-  # L2 makes one combination a NAMED hole: a zfs pool is created by the install, never by
-  # the image.
+  # L2 as amended: an unencrypted pool is created by the format-VM from the host's disko
+  # layout; the ENCRYPTED pool stays the install's alone (L3) — every key the image build
+  # could use is store-public for life.
   diskShape =
-    if host.variants.runtime.storage == "zfs"
-    then throw ("unsupported (L2): a zfs pool is created by the install, never by the image"
-      + " — use #image-<format>-install")
+    if host.variants.runtime.storage == "zfs" && (host.install.encrypted or false)
+    then throw ("unsupported (L3): an encrypted pool cannot be created from store-public"
+      + " data — use #image-<format>-install")
     else host.variants.runtime.storage;
   storeShapeFor = format: {
     iso = "squashfs";
@@ -91,7 +92,7 @@ let
     then { inherit (slot) name; sizeMiB = 4; }
     else null;
 
-  imageFor = format: shape: rootMode: system: nameSuffix: placement:
+  imageFor = format: shape: rootMode: system: nameSuffix: placement: extras:
     image ({
       name = "${host.name}-${format}${nameSuffix}";
       inherit format;
@@ -99,13 +100,18 @@ let
       storeShape = shape;
       storePlacement = placement;
       slot = slotFor format;
-    } // extract system // { inherit rootMode; });
+    } // extract system // { inherit rootMode; } // extras);
 
+  # The runtime disk endpoints carry the host's OWN layout and hostid — the format-VM's
+  # inputs; the wrapper endpoints never do, an installer's disk is the wrapper's.
   runtimeEndpoints = lib.listToAttrs (map (f: rec {
     name = "image-${f}";
     value =
       let v = variantFor f;
-      in imageFor f (storeShapeFor f) v.rootMode v "" (placementFor f);
+      in imageFor f (storeShapeFor f) v.rootMode v "" (placementFor f) {
+        layout = host.layout or null;
+        hostId = host.hostId or null;
+      };
   }) formats);
 
   # What gets installed is ALWAYS the host as it runs; the format only shapes the wrapper.
@@ -188,7 +194,7 @@ let
           else installers.${installerRootModeFor f};
       in
       imageFor f (installerShapeFor f) installer.rootMode installer "-install"
-        (placementFor f));
+        (placementFor f) { });
   }) formats);
 
   # The memory-rooted wrapper for the disk formats: the closure rides the initrd on the
@@ -199,7 +205,7 @@ let
   inmemoryInstallEndpoints = lib.listToAttrs (map (f: {
     name = "image-${f}-install-inmemory";
     value = guardL6 f
-      (imageFor f "squashfs" "memory" installers.rawMemory "-install-inmemory" "initrd");
+      (imageFor f "squashfs" "memory" installers.rawMemory "-install-inmemory" "initrd" { });
   }) [ "raw" "qcow2" ]);
 
   personalizeFor = name: slot:
@@ -238,13 +244,15 @@ runtimeEndpoints // installEndpoints // inmemoryInstallEndpoints // {
     sidecarFormat = "json";
   };
 
-  # Bound to the host's DELIVERABLE: for a zfs host the -install artifact (L2 — the runtime
-  # disk endpoints are the hole), for everyone else the runtime image; the iso runner is
-  # the same phase 2 against the iso artifact's slot FILE.
+  # Phase 2 has NO default target: the runner personalizes WHATEVER artifact it is handed
+  # at run time, and this record only states what a slot IS on a disk artifact — the
+  # partition the host's one slot declaration names. Every disk endpoint returns this same
+  # record; nothing here picks a deliverable. The iso/kexec runners are the same phase 2
+  # for the formats whose slot is a file / an initrd segment.
   image-personalize = personalizeFor host.name
-    (if host.variants.runtime.storage == "zfs"
-     then installEndpoints.image-raw-install.slot
-     else runtimeEndpoints.image-raw.slot);
+    (let s = slotFor "raw";
+     in if s == null then null
+        else { destination = "partition"; name = s.name; fs = "vfat"; });
   image-personalize-iso = personalizeFor "${host.name}-iso" runtimeEndpoints.image-iso.slot;
   image-personalize-kexec = personalizeFor "${host.name}-kexec" runtimeEndpoints.image-kexec.slot;
 

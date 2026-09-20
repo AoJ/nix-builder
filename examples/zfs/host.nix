@@ -1,15 +1,19 @@
 # A zfs server. The configuration states a zfs root, and that is enough for the front door
-# to know the storage and the pool (`rpool/root` → `rpool`). What it cannot read is how to
-# CREATE that pool — a pool is not a disko layout — so this host states its own install
-# recipe: it creates the pool and mounts it at /mnt.
+# to know the storage and the pool (`rpool/root` → `rpool`). The pool is not a disko
+# layout in the ext4 sense, but it IS disko data — so this host imports the zfs layout
+# template next to disko's module, and the ONE layout feeds three things: the install runs
+# disko's create script through it, the runtime disk image is formatted from it by the
+# format-VM (a pool is a kernel object; a runner-arch VM makes it, so an aarch64 image
+# builds on an x86 box), and the disk list a create may clear comes from it too.
 #
-# Because the pool is created by the install (law L2), this host has no runtime disk
-# image: `image-raw` refuses, and the deliverables are the installers. See README.md.
-{ pkgs, builder }:
+# The runtime disk images are NO LONGER holes (that was L2 before the format-VM): `#image-raw`
+# is real. See README.md.
+{ pkgs, builder, diskoModule }:
 
 let
   device = "/dev/disk/by-id/virtio-main";
   pool = "rpool";
+  slotName = "secrets";
 
   configuration = { modulesPath, ... }: {
     imports = [ (modulesPath + "/profiles/qemu-guest.nix") ];
@@ -19,22 +23,30 @@ let
     networking.hostName = "example-zfs";
     users.allowNoPasswordLogin = true;
 
+    # A zfs root's runtime facts the host states itself (the layout template leaves
+    # enableConfig off): the pool's hostId — the same one the format-VM builds the pool
+    # with, so first boot imports without -f — and the root/boot mounts.
     networking.hostId = "8425e349";
     boot.supportedFilesystems = [ "zfs" ];
     boot.zfs.forceImportRoot = false;
+    boot.zfs.devNodes = "/dev/disk/by-partlabel";
     fileSystems."/" = { device = "${pool}/root"; fsType = "zfs"; };
     fileSystems."/boot" = { device = "/dev/disk/by-partlabel/ESP"; fsType = "vfat"; };
     boot.loader.systemd-boot.enable = true;
   };
 
+  # ESP at /boot, the vfat slot, the rest one pool with a legacy root — an ordinary disko
+  # layout in this configuration; override a partition with lib.mkForce, or drop it and
+  # write your own. Both the install and the image read the same data.
+  layout = builder.lib.diskLayoutZfs { inherit device slotName pool; };
+
   host = import (pkgs.path + "/nixos/lib/eval-config.nix") {
     system = "x86_64-linux";
-    modules = [ configuration ];
+    modules = [ configuration diskoModule layout ];
   };
 in
 builder.lib.imagesFor {
-  inherit pkgs host;
-  slotName = "secrets";
+  inherit pkgs host slotName;
 
   secrets = {
     delivery = [ "embedded" "sidecar" ];
@@ -42,33 +54,5 @@ builder.lib.imagesFor {
       target = "/sops.age";
       content.file = "/run/secrets/example-zfs/host.key";
     }];
-  };
-
-  install = {
-    # The disks a create may clear. With a disko layout this comes from the layout; a
-    # hand-written pool has to say it, and this is the only place that says it.
-    disks = [ device ];
-
-    # Both scripts run under the install action's PATH — nix, zfs, util-linux, coreutils —
-    # so anything outside that set is spelled absolutely.
-    script = pkgs.writeShellScript "prepare-zfs" ''
-      set -euo pipefail
-      disk=${device}
-      ${pkgs.gptfdisk}/bin/sgdisk -Z "$disk"
-      ${pkgs.gptfdisk}/bin/sgdisk -n 1:0:+512M -t 1:ef00 -c 1:ESP "$disk"
-      ${pkgs.gptfdisk}/bin/sgdisk -n 2:0:+8M -t 2:8300 -c 2:secrets "$disk"
-      ${pkgs.gptfdisk}/bin/sgdisk -n 3:0:0 -t 3:bf01 -c 3:zfs "$disk"
-      ${pkgs.systemd}/bin/udevadm settle
-      ${pkgs.dosfstools}/bin/mkfs.fat -F 32 -n ESP "''${disk}-part1"
-      ${pkgs.dosfstools}/bin/mkfs.fat -n SLOT "''${disk}-part2"
-      zpool create -f -o ashift=12 -O mountpoint=none -O compression=on \
-        ${pool} "''${disk}-part3"
-      zfs create -o mountpoint=legacy ${pool}/root
-      mkdir -p /mnt
-      mount -t zfs ${pool}/root /mnt
-      mkdir -p /mnt/boot
-      mount "''${disk}-part1" /mnt/boot
-    '';
-
   };
 }

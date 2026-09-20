@@ -1,22 +1,23 @@
-# An encrypted zfs host — the plain zfs example plus this host's own unlock story.
-# Encryption follows the install (law L3): no image is ever encrypted, and the pool is
-# created at install time with the real passphrase.
+# An encrypted zfs host — the plain zfs example plus this host's own unlock story, and NO
+# hand-rolled formatting: the pool is created through disko like every other target. The
+# layout template declares the encryption as data; the create reads the passphrase off the
+# path the install action lays the slot out at (`builder.lib.paths.installSlot`), then
+# repoints keylocation at the initrd file the installed system provides.
 #
-# Notice what blocks does NOT know here. It carries a file this host called `pool.pass`
-# into the slot and never opens it; this host's own scripts read it, off the path the
-# builder publishes (`builder.lib.paths.installSlot`) while the install runs. Where the
-# passphrase then lives on the installed machine, and how stage 1 gets at it, is this
-# host's layout — the slot partition, mounted where it likes.
-{ pkgs, builder }:
+# Encryption follows the install (law L3): no image is ever encrypted — `#image-raw` stays
+# a hole — because a key in a cacheable derivation is store-public for life. blocks still
+# carries the `pool.pass` file into the slot and never opens it.
+{ pkgs, builder, diskoModule }:
 
 let
   device = "/dev/disk/by-id/virtio-main";
   pool = "rpool";
   slotName = "secrets";
-  # Published by the builder: where the install action lays the slot out while it runs.
+  # Published by the builder: where the install action lays the slot's files out while it
+  # runs, so disko's create finds the delivered passphrase there.
   inherit (builder.lib.paths) installSlot;
-  # This host's own choices: where its slot partition mounts once installed, and the
-  # initrd path stage 1 reads the passphrase from.
+  # This host's own choices: where its slot partition mounts once installed, and the initrd
+  # path stage 1 reads the passphrase from.
   slotMount = "/var/lib/slot";
   poolKeyInitrd = "/pool.key";
 
@@ -31,6 +32,7 @@ let
     networking.hostId = "1badb002";
     boot.supportedFilesystems = [ "zfs" ];
     boot.zfs.forceImportRoot = false;
+    boot.zfs.devNodes = "/dev/disk/by-partlabel";
     fileSystems."/" = { device = "${pool}/root"; fsType = "zfs"; };
     fileSystems."/boot" = { device = "/dev/disk/by-partlabel/ESP"; fsType = "vfat"; };
     boot.loader.systemd-boot.enable = true;
@@ -47,9 +49,22 @@ let
     boot.initrd.secrets.${poolKeyInitrd} = "${slotMount}/pool.pass";
   };
 
+  # The same template as the plain zfs host, with encryption stated as data: created
+  # reading the install-slot passphrase, then repointed at the initrd path for boot.
+  layout = builder.lib.diskLayoutZfs {
+    inherit device slotName pool;
+    # disko mounts the slot here during the install, so the bootloader step can bake the
+    # passphrase into the initrd from a file that is in place before it runs.
+    inherit slotMount;
+    encryption = {
+      keyInstall = "${installSlot}/pool.pass";
+      keyBoot = poolKeyInitrd;
+    };
+  };
+
   host = import (pkgs.path + "/nixos/lib/eval-config.nix") {
     system = "x86_64-linux";
-    modules = [ configuration ];
+    modules = [ configuration diskoModule layout ];
   };
 in
 builder.lib.imagesFor {
@@ -65,35 +80,7 @@ builder.lib.imagesFor {
     ];
   };
 
-  install = {
-    disks = [ device ];
-    # Not decoration: it makes an installer whose slot never received the declared files
-    # refuse BEFORE any wipe, instead of failing the create with the disk already cleared.
-    encrypted = true;
-
-    # The layout: an ESP, the SLOT partition this host reads its secrets from, and the
-    # pool. The create takes the passphrase off the published install-slot path, then
-    # repoints keylocation at the initrd file the installed system will have.
-    script = pkgs.writeShellScript "prepare-zfs-enc" ''
-      set -euo pipefail
-      disk=${device}
-      ${pkgs.gptfdisk}/bin/sgdisk -Z "$disk"
-      ${pkgs.gptfdisk}/bin/sgdisk -n 1:0:+512M -t 1:ef00 -c 1:ESP "$disk"
-      ${pkgs.gptfdisk}/bin/sgdisk -n 2:0:+8M -t 2:8300 -c 2:${slotName} "$disk"
-      ${pkgs.gptfdisk}/bin/sgdisk -n 3:0:0 -t 3:bf01 -c 3:zfs "$disk"
-      ${pkgs.systemd}/bin/udevadm settle
-      ${pkgs.dosfstools}/bin/mkfs.fat -F 32 -n ESP "''${disk}-part1"
-      ${pkgs.dosfstools}/bin/mkfs.fat -n SLOT "''${disk}-part2"
-      zpool create -f -o ashift=12 -O mountpoint=none -O compression=on \
-        -O encryption=on -O keyformat=passphrase \
-        -O keylocation=file://${installSlot}/pool.pass ${pool} "''${disk}-part3"
-      zfs set keylocation=file://${poolKeyInitrd} ${pool}
-      zfs create -o mountpoint=legacy ${pool}/root
-      mkdir -p /mnt
-      mount -t zfs ${pool}/root /mnt
-      mkdir -p /mnt/boot
-      mount "''${disk}-part1" /mnt/boot
-    '';
-
-  };
+  # Not decoration: it makes an installer whose slot never received the declared files
+  # refuse BEFORE any wipe, instead of failing the create with the disk already cleared.
+  install.encrypted = true;
 }

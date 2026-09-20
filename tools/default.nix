@@ -27,6 +27,7 @@ in
   fatImageApp = (import ./fat-image.nix { inherit pkgs bashTool; }).app;
   gptDisk = import ./gpt-disk.nix { inherit pkgs bashTool ids; };
   store = import ./store.nix { inherit pkgs bashTool; };
+  formatVm = import ./format-vm.nix { inherit pkgs bashTool; };
   actionInstall = { storage }: bashTool {
     name = "action-install";
     runtimeInputs = (with pkgs; [

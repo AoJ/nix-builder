@@ -15,14 +15,14 @@ let
   # What a consumer's `builder` flake input looks like from inside an example.
   builder = { lib = import ../lib/api.nix; };
 
-  # Only the ext4 example needs a disko module; a consumer passes their own input's
+  # The disk-owning examples import a disko module; a consumer passes their own input's
   # (disko.nixosModules.disko), the gate passes the pinned source's.
   diskoModule = (import ../disko-pin.nix) + "/module.nix";
 
   examples = {
     ext4 = import ./ext4/host.nix { inherit pkgs builder diskoModule; };
-    zfs = import ./zfs/host.nix { inherit pkgs builder; };
-    zfs-encrypted = import ./zfs-encrypted/host.nix { inherit pkgs builder; };
+    zfs = import ./zfs/host.nix { inherit pkgs builder diskoModule; };
+    zfs-encrypted = import ./zfs-encrypted/host.nix { inherit pkgs builder diskoModule; };
     memory = import ./memory/host.nix { inherit pkgs builder; };
   };
 
@@ -32,8 +32,9 @@ let
   published = {
     ext4 = [ "image-raw" "image-qcow2" "image-iso" "image-kexec-install"
              "image-personalize" "image-secrets-vfat" ];
-    zfs = [ "image-kexec-install" "image-raw-install" "image-raw-install-inmemory"
-            "image-iso-install" "image-personalize" "image-personalize-kexec" ];
+    zfs = [ "image-raw" "image-qcow2" "image-kexec-install" "image-raw-install"
+            "image-raw-install-inmemory" "image-iso-install" "image-personalize"
+            "image-personalize-kexec" ];
     zfs-encrypted = [ "image-kexec-install" "image-raw-install"
                       "image-personalize-kexec" ];
     memory = [ "image-raw" "image-kexec" "image-iso" ];

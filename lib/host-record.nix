@@ -80,6 +80,27 @@ in
       '';
     };
 
+    layout = mkOption {
+      type = types.nullOr types.raw;
+      default = null;
+      description = ''
+        The host's disko layout as DATA ({ disko.devices = …; }), for the format-VM: a zfs
+        disk image is formatted from it (a pool is a kernel object, so a runner-arch VM
+        makes it), and an ext4 host that declares a layout is too — one layout for runtime,
+        image and install. Read from the configuration by the front door; null for a host
+        with no disko layout, whose disk formats fall back to userspace assembly.
+      '';
+    };
+
+    hostId = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      description = ''
+        The target's networking.hostId. A zpool is born with it in the format-VM, so first
+        boot imports without -f. Null where the host declares none (an ext4 host).
+      '';
+    };
+
     variants = mkOption {
       description = ''
         The same host in the shapes the formats need. Each is `lib.extract` applied to an

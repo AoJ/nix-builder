@@ -27,15 +27,21 @@ let
     }
   ]) entries;
 in
-tools.fatImage {
-  inherit name;
-  label = "ESP";
-  volumeId = tools.ids.volumeId "${name}:esp";
+rec {
+  # The ESP as a FILE LIST — what the format-VM pours into a disko-made partition; the
+  # image is the same list packed by fat-image for the assembly path.
   files = [
     { source = "${bootloader}"; target = "/EFI/BOOT/${efiFileName}"; }
     { source = "${loaderConf}"; target = "/loader/loader.conf"; }
   ] ++ entryFiles;
-  # FAT32 is not legal under ~33 MiB, and an ESP is FAT32 by convention.
-  sizeMiB = 36;
-  fat = "32";
+
+  img = tools.fatImage {
+    inherit name;
+    label = "ESP";
+    volumeId = tools.ids.volumeId "${name}:esp";
+    inherit files;
+    # FAT32 is not legal under ~33 MiB, and an ESP is FAT32 by convention.
+    sizeMiB = 36;
+    fat = "32";
+  };
 }

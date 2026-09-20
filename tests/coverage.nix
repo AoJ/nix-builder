@@ -26,8 +26,10 @@ let
 
   statuses = [ "booted" "hole" "eval-only" ];
 
-  # The holes the LAWS derive: a zfs host's runtime disk endpoints are L2, and a squashfs
-  # host's install endpoints are L6 — its store is written by the image, never by an install.
+  # The holes the LAWS derive: an ENCRYPTED zfs host's runtime disk endpoints are L3 (the
+  # unencrypted ones became real when the format-VM amended L2 — the zfs host carries a
+  # layout now), and a squashfs host's install endpoints are L6 (its store is written by
+  # the image, never by an install).
   installEndpoints = [
     "image-iso-install" "image-raw-install" "image-qcow2-install"
     "image-kexec-install" "image-ipxe-install"
@@ -40,7 +42,7 @@ let
     arm = [ ];
     "ext4-install" = [ ];
     "image-install" = [ ];
-    zfs = [ "image-raw" "image-qcow2" ];
+    zfs = [ ];
     "zfs-enc" = [ "image-raw" "image-qcow2" ];
   };
 
@@ -90,8 +92,8 @@ let
       closure-live = "eval-only";
     };
     zfs = {
-      image-raw = "hole";
-      image-qcow2 = "hole";
+      image-raw = "booted";
+      image-qcow2 = "eval-only";
       image-iso = "eval-only";
       image-kexec = "eval-only";
       image-ipxe = "eval-only";

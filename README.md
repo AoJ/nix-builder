@@ -129,6 +129,57 @@ installers, both from one disko layout), encrypted zfs with unattended unlock, s
 appliance — each gated by the suite, so the reference cannot drift from the code.
 [`tests/hosts/`](tests/hosts/) holds the records the e2e boot.
 
+## Combinations and required parameters
+
+**The front door — `imagesFor { … }`:**
+
+| argument | required? | note |
+|---|---|---|
+| `pkgs`, `host` | **yes** | the nixpkgs, and your evaluated NixOS system |
+| `slotName` | only if the host declares secrets | a host with no secrets builds no slot and names none; declaring secrets without it is refused by name (never defaulted — it must match the layout's partition) |
+| `secrets` | no (default `{ }`) | what goes in the slot |
+| `install` | no (default `{ }`) | only the `-install` endpoints read it |
+| `name` | no (default `networking.hostName`) | names the artifacts |
+
+**Read from the configuration — you state normal NixOS, nothing extra:** the storage
+(`fileSystems."/".fsType`), the root mode, the architecture, the machine, the live variants;
+the disko layout (`cfg.disko.devices`) and, **for a zfs host**, `networking.hostId`; the
+install script (disko's own, when there is a layout) and its disk list; the pool (**zfs
+only** — the first component of `rpool/root`).
+
+**The layout templates** (imported in the host's config next to disko's module):
+
+| template | required | optional |
+|---|---|---|
+| `diskLayout` (ext4) | `device` | `slotName`, `espSize`, `slotSize` |
+| `diskLayoutZfs` | `device`, **`pool`**, **`espLabel`** | `slotName`, `espSize`, `slotSize`, `encryption`, `slotMount`, `poolPostCreate` |
+
+`pool` and `espLabel` are required with no default: each must equal what the host states
+elsewhere (its root dataset, its `/boot` partlabel), so a default would be a second hidden
+source of that value. `slotName` is optional — omit it and no slot partition is built.
+
+**`secrets.files`** — one entry: `target` (required, a path inside the slot), `content`
+(required, **exactly one** of `text` / `env` / `file`), `mode` (optional, `"0400"`). `text`
+is declared in nix (so already-encrypted only); `env` reads a variable and `file` reads a
+path — both when the phase-2 runner RUNS, so nothing plaintext reaches the store.
+
+**Which endpoints a host gets, by storage:**
+
+| host storage | `#image-raw` / `-qcow2` | `#image-iso` | `#image-kexec` / `-ipxe` | `#image-*-install` | what you must supply |
+|---|---|---|---|---|---|
+| ext4 (disk) | ✅ | ✅ | ✅ | ✅ | a disko layout, **or** `install.disks` + a `script` |
+| zfs, unencrypted | ✅ (format-VM, **needs a layout**) | ✅ | ✅ | ✅ | `diskLayoutZfs` (with `pool` + `espLabel`) |
+| zfs, encrypted | **hole (L3)** | ✅ | ✅ | ✅ | layout with `encryption` + `install.encrypted = true` |
+| squashfs (tmpfs root) | ✅ | ✅ | ✅ | **hole (L6)** — the image IS the deliverable | nothing (it has no installer) |
+
+Holes are not a silent fallback: they **refuse at eval**, named by the law. The one hard
+`-install` requirement: a host with no disko layout and no `install.disks` is refused,
+because an install must know which disks it may clear.
+
+**Every disk endpoint and sidecar hands back its volume identity** — `.label` (the
+`/dev/disk/by-label` handle) and `.volumeId` — so a consumer mounts by exactly what was
+stamped instead of guessing.
+
 ## Tests
 
     ./run-all.sh              # everything: contract tests, per-host eval gates, e2e

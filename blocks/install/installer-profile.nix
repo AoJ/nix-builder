@@ -6,7 +6,7 @@
 # exactly where the host boots, and carries nothing the host did not claim to need.
 { name, kind, payload, pool, storage, encrypted, slotName, slotFiles
 , rootMode, isoLabel, slotFace, disks, report, machine, actionInstall, completion, handover
-, netbootFace, isoFace, storeLabel }:
+, netbootFace, isoFace, storeLabel, installSlot }:
 
 { pkgs, lib, modulesPath, ... }:
 let
@@ -106,11 +106,11 @@ in
     script = ''
       ${reportFn}
       deliver() {
-        cp -a "$1"/. /run/slot/
-        report_line "installer: slot taken over ($(find /run/slot -type f | wc -l) files)"
+        cp -a "$1"/. ${installSlot}/
+        report_line "installer: slot taken over ($(find ${installSlot} -type f | wc -l) files)"
       }
-      mkdir -p /run/slot /run/slot-src
-      chmod 0700 /run/slot
+      mkdir -p ${installSlot} /run/slot-src
+      chmod 0700 ${installSlot}
       ${
         if slotFace ? partlabel then ''
           dev=/dev/disk/by-partlabel/${slotFace.partlabel}

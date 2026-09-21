@@ -4,7 +4,7 @@ let
   inherit (lib) mkOption types;
 
   esp = import ./parts/esp.nix { inherit pkgs lib tools; };
-  iso = import ./parts/iso.nix { inherit pkgs lib; inherit (tools) ids storeFileName; };
+  iso = import ./parts/iso.nix { inherit pkgs lib; inherit (tools) storeFileName; };
   netboot = import ./parts/netboot.nix { inherit pkgs lib; inherit (tools) ids storeFileName; };
 in
 {
@@ -83,6 +83,17 @@ in
       type = types.nullOr types.str;
       default = null;
       description = "The target's networking.hostId — a zpool is born with it (no import -f).";
+    };
+
+    mediumLabel = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      description = ''
+        The volume id the iso medium is stamped with and found by — supplied by the
+        composer (the ONE place it is derived), never re-derived here, so the label the
+        runtime face mounts by and the label the medium carries are the same string. Null
+        for the formats that are not a labelled medium.
+      '';
     };
 
     slot = mkOption {
@@ -249,9 +260,14 @@ in
       # installer reads and the marker gates against.
       slotFile = (tools.slotFace { format = "iso"; inherit (config.slot) name; }).path;
 
-      # The iso medium's volume id, derived from the artifact name through the same ids tool
-      # the iso part stamps with — one string, agreed on both sides (the e2e boot tests it).
-      isoVolid = lib.toUpper (tools.ids.volumeId "${config.name}:iso");
+      # The iso medium's volume id — the composer's, not re-derived here (a second
+      # derivation of "the same" id is exactly what drifts). Required for iso; forcing it
+      # for a format that never carries a medium label is a named refusal, not a guess.
+      isoVolid =
+        if config.mediumLabel == null
+        then throw ("image ${config.name}: an iso medium needs its label (mediumLabel) —"
+          + " the composer derives it once and supplies it")
+        else config.mediumLabel;
 
       tree = netboot {
         inherit (config) name kernel initrd kernelParams;
@@ -317,6 +333,7 @@ in
           file = iso {
             inherit (config) name;
             inherit espImg;
+            volid = isoVolid;
             storeImg = store.img;
             extraFiles = lib.optional (config.slot != null) {
               path = slotFile;

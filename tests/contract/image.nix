@@ -33,22 +33,33 @@ let
 
   caseName = f: s: slot:
     "fixture-${f}-${s}" + lib.optionalString (slot != null) "-slot";
-  build = f: s: slot: image (payload // {
-    name = caseName f s slot;
-    format = f;
-    storeShape = s;
-    rootMode = rootModeFor f;
-    storePlacement = placementFor f;
-    inherit slot;
-  });
-  buildInitrd = f: slot: image (payload // {
-    name = caseName f "squashfs" slot + "-initrd";
-    format = f;
-    storeShape = "squashfs";
-    rootMode = "memory";
-    storePlacement = "initrd";
-    inherit slot;
-  });
+  # The composer supplies the iso medium's label, derived from the artifact NAME through the
+  # ids tool; stand in for it here the same way, so two differently-named fixtures get two
+  # ids (no shared constant), exactly as the composer would.
+  mediumLabelFor = f: name:
+    if f == "iso" then lib.toUpper (tools.ids.volumeId "${name}:iso") else null;
+  build = f: s: slot:
+    let name = caseName f s slot;
+    in image (payload // {
+      inherit name;
+      format = f;
+      storeShape = s;
+      rootMode = rootModeFor f;
+      storePlacement = placementFor f;
+      mediumLabel = mediumLabelFor f name;
+      inherit slot;
+    });
+  buildInitrd = f: slot:
+    let name = caseName f "squashfs" slot + "-initrd";
+    in image (payload // {
+      inherit name;
+      format = f;
+      storeShape = "squashfs";
+      rootMode = "memory";
+      storePlacement = "initrd";
+      mediumLabel = mediumLabelFor f name;
+      inherit slot;
+    });
   cases = lib.concatMap (f:
     lib.concatMap (s: map (slot: rec {
       format = f; shape = s; inherit slot;
@@ -75,7 +86,7 @@ let
   });
   otherIso = image (payload // {
     name = "other"; format = "iso"; storeShape = "squashfs"; rootMode = "memory";
-    storePlacement = null;
+    storePlacement = null; mediumLabel = mediumLabelFor "iso" "other";
   });
 
   # An aarch64 artifact assembles NATIVELY: the tools are the runner's, the bootloader is

@@ -18,7 +18,7 @@
 # and never mounts the target at all.
 #
 # The SLOT is the only thing this carries: the caller lays the installer's own slot out at
-# /run/slot, the host's own storage scripts read from there whatever they need, and the act
+# $install_slot (the published paths.installSlot), the host's own storage scripts read from there whatever they need, and the act
 # copies the same files into the partition named slotName on the target — so the installed
 # system finds its secrets exactly where it would have, had the image written the slot.
 # Nothing here reads a file's content or knows what any of them are for; slotFiles lists
@@ -86,7 +86,7 @@ capability_gate() {
   local tmp_req tmp_du closure_bytes required want
   while IFS= read -r want; do
     [ -n "$want" ] || continue
-    [ -e "/run/slot$want" ] || fatal "the slot carries no $want — this installer was" \
+    [ -e "$install_slot$want" ] || fatal "the slot carries no $want — this installer was" \
       "never personalized; refusing before any wipe"
   done < "$slot_files"
   for disk in "${disks[@]}"; do
@@ -178,7 +178,7 @@ wipe_and_create() {
 # system builds from them (an initrd secret, say) sees them already in place.
 place_slot() {
   local disk dev part label target="" mnt="" own=no sc=0
-  if [ -z "$(find /run/slot -mindepth 1 -maxdepth 1 -print -quit 2> /dev/null)" ]; then
+  if [ -z "$(find "$install_slot" -mindepth 1 -maxdepth 1 -print -quit 2> /dev/null)" ]; then
     info "the slot carries nothing -> the target's slot stays as the layout made it"
     return 0
   fi
@@ -210,7 +210,7 @@ place_slot() {
     add_cleanup "rmdir '$mnt' 2> /dev/null || true"
     run "mount the target's slot" timeout 60 mount "$target" "$mnt"
   fi
-  cp -a /run/slot/. "$mnt/"
+  cp -a "$install_slot/." "$mnt/"
   [ "$own" = no ] || run "unmount the target's slot" timeout 60 umount "$mnt"
   info "slot placed on $target at $mnt"
 }

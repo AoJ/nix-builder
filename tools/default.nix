@@ -36,7 +36,11 @@ in
       nix util-linux e2fsprogs dosfstools nixos-install-tools coreutils gawk gptfdisk zstd
     ]) ++ [ (actionWipe { inherit storage; }) ]
       ++ lib.optional (storage == "zfs") pkgs.zfs;
-    text = builtins.readFile ./action-install.sh;
+    # Where the slot is laid out is the ONE published constant, baked in so the action, the
+    # installer and a host's keylocation all name the same path — never a bash literal that
+    # could drift from paths.installSlot.
+    text = "install_slot=${lib.escapeShellArg constants.installSlot}\n"
+      + builtins.readFile ./action-install.sh;
   };
   # The read-only store mechanism (overlay + register-nix-paths) and the two runtime faces
   # built on it. A face is a nixos module, and the mechanism belongs to whoever declares the

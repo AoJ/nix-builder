@@ -111,6 +111,9 @@ let
       in imageFor f (storeShapeFor f) v.rootMode v "" (placementFor f) {
         layout = host.layout or null;
         hostId = host.hostId or null;
+        # The iso medium's label, derived ONCE here and handed to the block — the same
+        # string the runtime iso face mounts by.
+        mediumLabel = if f == "iso" then isoLabel else null;
       };
   }) formats);
 
@@ -194,7 +197,11 @@ let
           else installers.${installerRootModeFor f};
       in
       imageFor f (installerShapeFor f) installer.rootMode installer "-install"
-        (placementFor f) { });
+        (placementFor f) {
+          # The installer's iso medium wears the -iso-install label, the same one its iso
+          # face mounts by; derived once here like the runtime one.
+          mediumLabel = if f == "iso" then isoInstallLabel else null;
+        });
   }) formats);
 
   # The memory-rooted wrapper for the disk formats: the closure rides the initrd on the

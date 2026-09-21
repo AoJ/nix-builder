@@ -215,6 +215,7 @@ in
             actionInstall = tools.actionInstall { inherit (config) storage; };
             inherit (tools) netbootFace isoFace;
             storeLabel = tools.diskLabels.store;
+            inherit (tools) installSlot;
           })
         ];
       };

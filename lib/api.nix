@@ -49,8 +49,9 @@ rec {
   paths = {
     # Where the install action lays the slot's files out while it runs, for a host's own
     # storage scripts to read (a pool passphrase, say — blocks never learns which file is
-    # which).
-    installSlot = "/run/slot";
+    # which). From the ONE constant the install action and installer also read, so what a
+    # host points its keylocation at is exactly where the slot is laid.
+    inherit (import ../tools/constants.nix) installSlot;
   };
 
   # The disk layout template: a disko layout for a host that must own a disk but has

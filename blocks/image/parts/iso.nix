@@ -3,9 +3,9 @@
 # INSIDE that FAT image, because that is the filesystem the firmware and systemd-boot read.
 # `-isohybrid-gpt-basdat` marks the same image in a GPT so the file also boots dd'd to a
 # stick (the nixpkgs pattern, make-iso9660-image.sh).
-{ pkgs, lib, ids, storeFileName }:
+{ pkgs, lib, storeFileName }:
 
-{ name, espImg, storeImg, extraFiles ? [ ] }:
+{ name, espImg, storeImg, volid, extraFiles ? [ ] }:
 
 pkgs.runCommand "${name}.iso"
   { nativeBuildInputs = [ pkgs.xorriso pkgs.coreutils ]; }
@@ -27,7 +27,7 @@ pkgs.runCommand "${name}.iso"
     # same by-label lookup.
     find "$staged" -exec touch -h -d @1 {} +
     xorriso -as mkisofs -r -J \
-      -volid ${lib.escapeShellArg (lib.toUpper (ids.volumeId "${name}:iso"))} \
+      -volid ${lib.escapeShellArg volid} \
       -e boot/efi.img -no-emul-boot -isohybrid-gpt-basdat \
       -o "$out" "$staged"
   ''

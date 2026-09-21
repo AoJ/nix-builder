@@ -28,6 +28,8 @@ let
   slottedIso = image (payload // {
     name = "fixture"; format = "iso"; storeShape = "squashfs"; rootMode = "memory";
     storePlacement = null;
+    # The composer supplies the iso medium's label; stand in for it the same way.
+    mediumLabel = lib.toUpper (tools.ids.volumeId "fixture:iso");
     slot = { name = "secrets"; sizeMiB = 4; };
   });
   tree = image (payload // {

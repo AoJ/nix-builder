@@ -31,10 +31,10 @@ let
   # refuse.
   published = {
     ext4 = [ "image-raw" "image-qcow2" "image-iso" "image-kexec-install"
-             "image-personalize" "image-secrets-vfat" ];
-    zfs = [ "image-raw" "image-qcow2" "image-kexec-install" "image-raw-install"
-            "image-raw-install-inmemory" "image-iso-install" "image-personalize"
-            "image-personalize-kexec" ];
+             "image-personalize" "image-secrets-vfat" "image-secrets-iso" ];
+    zfs = [ "image-raw" "image-qcow2" "image-iso" "image-kexec-install"
+            "image-raw-install" "image-raw-install-inmemory" "image-personalize"
+            "image-personalize-kexec" "image-secrets-iso" ];
     zfs-encrypted = [ "image-kexec-install" "image-raw-install"
                       "image-personalize-kexec" ];
     memory = [ "image-raw" "image-kexec" "image-iso" ];

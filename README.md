@@ -89,27 +89,45 @@ what reads it is the host's business. An `-install` artifact carries the same sl
 fills the target's on the way through.
 
 Every host gets the same endpoint set; combinations a law forbids are named holes that
-refuse at eval (a zfs host's `image-raw`, a squashfs host's installers), never endpoints
-that quietly mean something else.
+refuse at eval (an **encrypted** zfs host's `image-raw`, a squashfs host's installers),
+never endpoints that quietly mean something else. An unencrypted zfs host DOES get its
+runtime disk images: the pool is a kernel object, so a VM on the runner's own architecture
+(never emulation) makes it from the host's disko layout and the closure is injected as data
+— an aarch64 image builds on an x86 box with no target-arch code.
+
+Each disk endpoint hands back the volume identity it was stamped with, so a consumer mounts
+by exactly what was written instead of guessing: `endpoints.image-secrets-iso.label` /
+`.volumeId`, `endpoints.image-iso.label` (the iso9660 volume id), and the vfat sidecar's
+fixed `SECRETS` label with its `.volumeId` serial.
 
 The API:
 
 - `lib.imagesFor { pkgs; host; slotName; secrets ? …; install ? …; }` — the front door.
 - `lib.recordFor` — the same, stopping at the record, for a consumer who wants to adjust
   a field before composing it.
-- `lib.diskLayout { device; slotName; espSize ? …; slotSize ? … }` — the layout template,
-  imported in the host's own configuration next to disko's module: ESP, slot, ext4 root,
-  every choice visible there and overridden like any other option.
+- `lib.diskLayout { device; slotName; espSize ? …; slotSize ? … }` — the ext4 layout
+  template, imported in the host's own configuration next to disko's module: ESP, slot,
+  ext4 root, every choice visible there and overridden like any other option.
+- `lib.diskLayoutZfs { device; slotName; pool; espLabel; espSize ? …; slotSize ? …;
+  encryption ? null; slotMount ? null }` — the zfs variant: ESP, slot, one pool with a
+  legacy root. `pool` and `espLabel` are REQUIRED, no default — each must match what the
+  host states elsewhere (its root dataset, its `/boot` partlabel), and a default would be a
+  second hidden source of that value. Pass `encryption = { keyInstall; keyBoot; }` for an
+  L3 host, and `slotMount` when the slot must be mounted at install (an encrypted host reads
+  its passphrase from it).
+- `lib.paths.installSlot` — where the install action lays the slot out while it runs, for a
+  host's own storage scripts to read (a pool passphrase, say).
 - `lib.mk { pkgs }` → `tools`, `compose`, `modules` (`liveNetboot`, `liveIso label`,
-  `readOnlyStore { device }` — the host-side modules a memory-rooted host needs),
-  plus `imagesFor` and `recordFor` bound to that `pkgs`.
+  `readOnlyStore { device ? … }` — the host-side modules a memory-rooted host needs; the
+  appliance's own store partition is the default, so it need not restate it), plus
+  `imagesFor` and `recordFor` bound to that `pkgs`.
 - `lib.hostRecord` — the record's option interface: every field, its type, and what reads
   it. `compose` validates through it, so nothing is implicit.
 
-[`examples/`](examples/) has one host per dimension — ext4, zfs installers, encrypted zfs
-with unattended unlock, squashfs appliance — each gated by the suite, so the reference
-cannot drift from the code. [`tests/hosts/`](tests/hosts/) holds the records the e2e
-boot.
+[`examples/`](examples/) has one host per dimension — ext4, zfs (runtime images AND
+installers, both from one disko layout), encrypted zfs with unattended unlock, squashfs
+appliance — each gated by the suite, so the reference cannot drift from the code.
+[`tests/hosts/`](tests/hosts/) holds the records the e2e boot.
 
 ## Tests
 

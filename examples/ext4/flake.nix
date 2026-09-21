@@ -32,6 +32,14 @@
         installer = endpoints.image-kexec-install.file;  # what a deploy kexecs
       };
 
+      # Each disk endpoint and sidecar hands back the volume identity it was stamped with,
+      # so a consumer mounts by exactly what was written — no guessing a generated id:
+      #   endpoints.image-secrets-vfat.label     # "SECRETS"  (mount -L SECRETS)
+      #   endpoints.image-secrets-vfat.volumeId  # the FAT serial, for /dev/disk/by-uuid
+      #   endpoints.image-secrets-iso.label      # the iso9660 volume id (by-label)
+      #   endpoints.image-iso.label              # the live medium's own volume id
+      # These are plain strings; read them wherever your deploy mounts the artifact.
+
       # Phase 2 and the sidecars are RUNNERS, not derivations — a secret in a derivation
       # is a secret in the store:
       #   nix run .#personalize -- ./image.raw
@@ -40,9 +48,15 @@
           type = "app";
           program = pkgs.lib.getExe endpoints.image-personalize.run;
         };
+        # The sidecar carries the same slot as a separate medium; take it as a filesystem
+        # (vfat / iso) or a format you read (json). Its identity is on the endpoint above.
         secrets-sidecar = {
           type = "app";
           program = pkgs.lib.getExe endpoints.image-secrets-vfat.run;
+        };
+        secrets-sidecar-iso = {
+          type = "app";
+          program = pkgs.lib.getExe endpoints.image-secrets-iso.run;
         };
       };
     };

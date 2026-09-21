@@ -8,6 +8,8 @@ let
   inherit (pkgs) lib;
   bashTool = args: (import ../lib/bash-tool.nix) ({ inherit pkgs; } // args);
   ids = import ./ids.nix;
+  constants = import ./constants.nix;
+  inherit (constants) registrationPath storeFileName;
   # zfs (userland here, the kernel module in the installer profile) rides only where the
   # target storage is zfs — an ext4 installer carries neither.
   actionWipe = { storage }: bashTool {
@@ -26,7 +28,7 @@ in
   fatImage = (import ./fat-image.nix { inherit pkgs bashTool; }).build;
   fatImageApp = (import ./fat-image.nix { inherit pkgs bashTool; }).app;
   gptDisk = import ./gpt-disk.nix { inherit pkgs bashTool ids; };
-  store = import ./store.nix { inherit pkgs bashTool; };
+  store = import ./store.nix { inherit pkgs bashTool registrationPath; };
   formatVm = import ./format-vm.nix { inherit pkgs bashTool; };
   actionInstall = { storage }: bashTool {
     name = "action-install";
@@ -39,17 +41,16 @@ in
   # The read-only store mechanism (overlay + register-nix-paths) and the two runtime faces
   # built on it. A face is a nixos module, and the mechanism belongs to whoever declares the
   # read-only store — so it lives here once and every consumer imports it.
-  roStore = import ./ro-store.nix { inherit pkgs; };
-  netbootFace = import ./netboot-face.nix { inherit pkgs; };
-  isoFace = import ./iso-face.nix { inherit pkgs; };
+  roStore = import ./ro-store.nix { inherit pkgs registrationPath; };
+  netbootFace = import ./netboot-face.nix { inherit pkgs storeFileName registrationPath; };
+  isoFace = import ./iso-face.nix { inherit pkgs storeFileName registrationPath; };
   # Where a slot lives per format — the ONE source the image builds from and the installer
   # reads from. (The marker restates it on purpose, to gate drift; see marker.nix.)
   slotFace = import ./slot-face.nix;
 
-  # The fixed partition labels of the disk USERSPACE ASSEMBLY builds (the raw/qcow2 path
-  # without a disko layout, and the squashfs appliance's disk). The ONE source: the image
-  # stamps the partition with these, and a host mounting its store off that disk reads the
-  # store label back from here — so the two cannot drift into a silently-unbootable host.
-  # A disko-owned disk is NOT this: it labels its own partitions, read from the layout.
-  diskLabels = { esp = "ESP"; store = "nixos"; };
+  # The shared constants (see constants.nix): each a value a producer and a consumer must
+  # agree on, kept in ONE place so the two cannot drift. diskLabels are the assembly disk's
+  # partition labels; storeFileName / installSlot are re-exported for the blocks that stamp
+  # or read them.
+  inherit (constants) diskLabels storeFileName installSlot;
 }

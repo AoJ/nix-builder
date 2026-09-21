@@ -1,4 +1,4 @@
-{ pkgs, bashTool }:
+{ pkgs, bashTool, registrationPath }:
 
 { name, rootPaths, shape, label, profile ? null }:
 
@@ -8,10 +8,9 @@ let
 
   closure = pkgs.closureInfo { rootPaths = rootPaths; };
 
-  # The path a store dump sits at. A nixpkgs convention (nixos/lib/make-squashfs.nix), read
-  # back by nixpkgs' own units (netboot.nix, iso-image.nix). Both sides take it from
-  # nixpkgs, not from each other, which is why no dependency runs between them.
-  registrationPath = "/nix/store/nix-path-registration";
+  # The file the store dump sits at, from the ONE constant: a nixpkgs convention
+  # (nixos/lib/make-squashfs.nix), loaded back by the register unit at the same path.
+  registrationFile = baseNameOf registrationPath;
 
   uuid = ids.uuid "${name}:store";
 
@@ -38,8 +37,8 @@ let
       # A read-only store cannot hold the database — it lives at /nix/var/nix/db, which
       # boots empty. So the image carries the DUMP and a unit in the OS loads it at every
       # boot. That unit is not this tool's to give.
-      cp ${closure}/registration nix-path-registration
-      mksquashfs nix-path-registration $(cat ${closure}/store-paths) "$out" \
+      cp ${closure}/registration ${registrationFile}
+      mksquashfs ${registrationFile} $(cat ${closure}/store-paths) "$out" \
         -no-hardlinks -keep-as-directory -all-root -b 1048576 -comp zstd \
         -no-progress
     '';
@@ -48,5 +47,5 @@ in
   img = { inherit ext4 squashfs; }.${shape};
   fs = shape;
   needsBootUnit = shape != "ext4";
-  inherit registrationPath uuid;
+  inherit uuid registrationPath;
 }

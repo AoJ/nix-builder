@@ -3,17 +3,17 @@
 # squashfs inside the medium (the shared roStore). Entries use nixpkgs' image-media
 # priority (60), so the face overrides a host's disk declarations without a fight — L1 as a
 # priority. Shared by the live-iso variant and the iso-rooted installer.
-{ pkgs }:
+{ pkgs, storeFileName, registrationPath }:
 { label }:
 { lib, config, ... }@args:
 
 let
   media = lib.mkOverride 60;
-  roStore = import ./ro-store.nix { inherit pkgs; };
+  roStore = import ./ro-store.nix { inherit pkgs registrationPath; };
 in
 lib.mkMerge [
   (roStore args {
-    device = "/iso/nix-store.squashfs";
+    device = "/iso/${storeFileName}";
     fsType = "squashfs";
     options = [ "loop" "ro" ];
     sysrootPrefixed = true;

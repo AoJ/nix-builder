@@ -4,8 +4,8 @@ let
   inherit (lib) mkOption types;
 
   esp = import ./parts/esp.nix { inherit pkgs lib tools; };
-  iso = import ./parts/iso.nix { inherit pkgs lib; inherit (tools) ids; };
-  netboot = import ./parts/netboot.nix { inherit pkgs lib; inherit (tools) ids; };
+  iso = import ./parts/iso.nix { inherit pkgs lib; inherit (tools) ids storeFileName; };
+  netboot = import ./parts/netboot.nix { inherit pkgs lib; inherit (tools) ids storeFileName; };
 in
 {
   options = {

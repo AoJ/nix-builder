@@ -37,7 +37,8 @@ rec {
 
   img = tools.fatImage {
     inherit name;
-    label = "ESP";
+    # The ESP FAT label from the ONE source the assembly's partition label also comes from.
+    label = tools.diskLabels.esp;
     volumeId = tools.ids.volumeId "${name}:esp";
     inherit files;
     # FAT32 is not legal under ~33 MiB, and an ESP is FAT32 by convention.

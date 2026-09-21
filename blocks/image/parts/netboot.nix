@@ -4,7 +4,7 @@
 # nixpkgs name /nix-store.squashfs — the netboot face mounts it from there. A declared slot
 # is RESERVED as a marker segment, so personalize can refuse a tree whose image never
 # declared one.
-{ pkgs, lib, ids }:
+{ pkgs, lib, ids, storeFileName }:
 
 { name, kernel, initrd, kernelParams, storeImg, slotName ? null }:
 
@@ -26,7 +26,7 @@ let
     '';
 
   storeSeg = segment "store-segment.cpio" ''
-    cp ${storeImg} "$staged/nix-store.squashfs"
+    cp ${storeImg} "$staged/${storeFileName}"
   '';
 
   slotSeg = segment "slot-segment.cpio" ''

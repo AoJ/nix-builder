@@ -3,7 +3,7 @@
 # INSIDE that FAT image, because that is the filesystem the firmware and systemd-boot read.
 # `-isohybrid-gpt-basdat` marks the same image in a GPT so the file also boots dd'd to a
 # stick (the nixpkgs pattern, make-iso9660-image.sh).
-{ pkgs, lib, ids }:
+{ pkgs, lib, ids, storeFileName }:
 
 { name, espImg, storeImg, extraFiles ? [ ] }:
 
@@ -14,7 +14,7 @@ pkgs.runCommand "${name}.iso"
     staged="$(mktemp -d)"
     mkdir -p "$staged/boot"
     cp ${espImg} "$staged/boot/efi.img"
-    cp ${storeImg} "$staged/nix-store.squashfs"
+    cp ${storeImg} "$staged/${storeFileName}"
     ${lib.concatMapStringsSep "\n" (f: ''
       mkdir -p "$staged$(dirname ${lib.escapeShellArg f.path})"
       cp ${f.source} "$staged"${lib.escapeShellArg f.path}

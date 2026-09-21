@@ -6,7 +6,7 @@
 # The overlay is not optional: nix-store --load-db creates /nix/store/.links, so a bare
 # read-only mount at /nix/store fails ("Read-only file system") and the DB stays empty. A
 # writable upper is what nixpkgs' own live media always use.
-{ pkgs }:
+{ pkgs, registrationPath }:
 
 # lower : { device; fsType; options ? []; sysrootPrefixed ? false; priority ? 60; }
 #
@@ -60,8 +60,8 @@ in
     serviceConfig = { Type = "oneshot"; RemainAfterExit = true; };
     script = ''
       mkdir -p /nix/var/nix/db
-      if [ -e /nix/store/nix-path-registration ]; then
-        ${pkgs.nix}/bin/nix-store --load-db < /nix/store/nix-path-registration
+      if [ -e ${registrationPath} ]; then
+        ${pkgs.nix}/bin/nix-store --load-db < ${registrationPath}
       fi
     '';
   };

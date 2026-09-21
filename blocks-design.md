@@ -296,6 +296,14 @@ handle.** The sidecar's `SECRETS` is a handle — its consumer mounts by it; the
 deliberately none (`SLOT`), because a slot is found by partlabel or offset and a second `SECRETS`
 would race the real one.
 
+**A generated handle is HANDED BACK, never left for the consumer to re-derive.** The iso medium's
+volume id and the iso sidecar's are name-derived hashes, not constants, so a consumer cannot guess
+them — the `secrets` block returns `label`/`volumeId`, and `image`'s iso output returns the
+medium's `label`, both the exact string the artifact was stamped with (`test-sidecar-identity`
+reads it back off the built medium with `blkid` and asserts the agreement). The one handle a
+consumer may hardcode is the vfat sidecar's `SECRETS`, because it IS a constant; everything else
+comes off the endpoint.
+
 **Both properties are per-architecture.** A native and an emulated build of one squashfs come out
 the same size and not the same bytes, so "the same bytes" holds for two builds on the same
 architecture and is not a claim about an artifact built in two places. That matters for the

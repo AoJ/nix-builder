@@ -40,6 +40,24 @@ in
           # A tool taking the destination as its argument, not a derivation — see files.
           run = mkOption { type = types.package; };
           fs = mkOption { type = types.str; };
+          # How the running system FINDS this sidecar — the block generates the identity,
+          # so it must hand it back, or a consumer has nothing to mount by.
+          label = mkOption {
+            type = types.nullOr types.str;
+            description = ''
+              The volume label at /dev/disk/by-label/ for a mountable sidecar: the fixed
+              SECRETS for vfat, the name-derived volume id for iso. Null for json, which is
+              read as a file, not mounted.
+            '';
+          };
+          volumeId = mkOption {
+            type = types.nullOr types.str;
+            description = ''
+              The 32-bit volume id the medium carries (the FAT serial for vfat, the iso9660
+              volume id for iso — which is also its label). Null for json. For a consumer
+              that finds the device by uuid rather than by label.
+            '';
+          };
         };
       };
     };
@@ -77,9 +95,18 @@ in
           manifest=${manifest}
         '' [ pkgs.coreutils pkgs.jq ];
       };
+      # The by-label handle and the raw volume id per format — the SAME values baked into
+      # the runners above, read back here so a consumer mounts by exactly what was written.
+      # vfat carries the fixed SECRETS label and the id as its FAT serial; iso's volume id
+      # IS its label (uppercased, iso9660 has no separate serial); json is a file.
+      isoVolid = lib.toUpper volumeId;
+      label = { vfat = "SECRETS"; iso = isoVolid; json = null; }.${config.sidecarFormat};
+      volId = { vfat = volumeId; iso = isoVolid; json = null; }.${config.sidecarFormat};
     in
     {
       run = byFormat.${config.sidecarFormat};
       fs = { vfat = "vfat"; iso = "iso9660"; json = "json"; }.${config.sidecarFormat};
+      inherit label;
+      volumeId = volId;
     };
 }

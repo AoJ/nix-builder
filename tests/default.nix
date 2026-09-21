@@ -50,6 +50,7 @@ in
   endpoints = builtins.mapAttrs (_: compose) hosts;
 
   test-coverage = coverage.check;
+  test-sidecar-identity = import ./test-sidecar-identity.nix { inherit pkgs compose hosts; };
 }
 // builtins.listToAttrs (map (h: {
   name = "test-hosts-compose-${h}";

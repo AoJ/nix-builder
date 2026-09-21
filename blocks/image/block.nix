@@ -110,6 +110,21 @@ in
             type = types.nullOr (types.attrsOf types.str);
             description = "The artifact face, as built — what personalize consumes.";
           };
+          label = mkOption {
+            type = types.nullOr types.str;
+            default = null;
+            description = ''
+              The volume label the WHOLE medium is found by at /dev/disk/by-label/ — set
+              for iso, whose consumer mounts the medium itself (the name-derived volume id,
+              uppercased). Null for the disk formats, which are found by their PARTITION
+              labels (ESP, nixos, the slot's name) instead, and for the netboot trees.
+            '';
+          };
+          volumeId = mkOption {
+            type = types.nullOr types.str;
+            default = null;
+            description = "The medium's 32-bit volume id (iso only) — the label, for a by-uuid consumer.";
+          };
           parts = mkOption {
             type = types.nullOr (types.attrsOf types.unspecified);
             default = null;
@@ -234,6 +249,10 @@ in
       # installer reads and the marker gates against.
       slotFile = (tools.slotFace { format = "iso"; inherit (config.slot) name; }).path;
 
+      # The iso medium's volume id, derived from the artifact name through the same ids tool
+      # the iso part stamps with — one string, agreed on both sides (the e2e boot tests it).
+      isoVolid = lib.toUpper (tools.ids.volumeId "${config.name}:iso");
+
       tree = netboot {
         inherit (config) name kernel initrd kernelParams;
         storeImg = store.img;
@@ -307,6 +326,11 @@ in
           layout = null;
           slot = if config.slot == null then null
                  else { destination = "file"; path = slotFile; fs = "vfat"; };
+          # The medium's own volume id — the SAME string the iso part stamps as the volid,
+          # derived here from the same name through the same ids tool, and handed back so a
+          # consumer mounts by exactly what was written.
+          label = isoVolid;
+          volumeId = isoVolid;
         };
         kexec = {
           file = tree;

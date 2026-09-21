@@ -13,6 +13,9 @@ let
   device = "/dev/disk/by-id/virtio-main";
   pool = "rpool";
   slotName = "secrets";
+  # ONE binding for the ESP partlabel: the layout's label and the /boot mount below read it,
+  # so a rename cannot leave the host with an ESP it cannot find.
+  espLabel = "ESP";
   # Published by the builder: where the install action lays the slot's files out while it
   # runs, so disko's create finds the delivered passphrase there.
   inherit (builder.lib.paths) installSlot;
@@ -34,7 +37,7 @@ let
     boot.zfs.forceImportRoot = false;
     boot.zfs.devNodes = "/dev/disk/by-partlabel";
     fileSystems."/" = { device = "${pool}/root"; fsType = "zfs"; };
-    fileSystems."/boot" = { device = "/dev/disk/by-partlabel/ESP"; fsType = "vfat"; };
+    fileSystems."/boot" = { device = "/dev/disk/by-partlabel/${espLabel}"; fsType = "vfat"; };
     boot.loader.systemd-boot.enable = true;
 
     # The slot the install filled, mounted where this host wants it.
@@ -52,7 +55,7 @@ let
   # The same template as the plain zfs host, with encryption stated as data: created
   # reading the install-slot passphrase, then repointed at the initrd path for boot.
   layout = builder.lib.diskLayoutZfs {
-    inherit device slotName pool;
+    inherit device slotName pool espLabel;
     # disko mounts the slot here during the install, so the bootloader step can bake the
     # passphrase into the initrd from a file that is in place before it runs.
     inherit slotMount;

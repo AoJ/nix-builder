@@ -18,7 +18,12 @@
 # repoints keylocation at `keyBoot` — the path the installed system's initrd provides. The
 # encrypted RUNTIME image stays a hole (the composer refuses it, L3); only the install path
 # ever runs an encrypted create.
-{ device, slotName, pool ? "rpool", espSize ? "512M", slotSize ? "8M"
+# pool and espLabel are REQUIRED, no default: each must AGREE with something the host states
+# elsewhere (the root dataset it mounts, the /boot partlabel), so a hidden default here would
+# be a second source of that truth — exactly how a host silently drifts into formatting
+# storage it then cannot find. espSize/slotSize default because they are standalone sizes
+# with no counterpart to drift against.
+{ device, slotName, pool, espLabel, espSize ? "512M", slotSize ? "8M"
 , encryption ? null, poolPostCreate ? "", slotMount ? null }:
 { lib, ... }:
 {
@@ -35,7 +40,7 @@
           priority = 1;
           size = espSize;
           type = "EF00";
-          label = "ESP";
+          label = espLabel;
           content = { type = "filesystem"; format = "vfat"; mountpoint = "/boot"; };
         };
         ${slotName} = {

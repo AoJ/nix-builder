@@ -14,6 +14,9 @@ let
   device = "/dev/disk/by-id/virtio-main";
   pool = "rpool";
   slotName = "secrets";
+  # The ESP partlabel: ONE binding, so the layout's label and the /boot mount below cannot
+  # drift into a host that formats an ESP it then cannot find.
+  espLabel = "ESP";
 
   configuration = { modulesPath, ... }: {
     imports = [ (modulesPath + "/profiles/qemu-guest.nix") ];
@@ -31,14 +34,15 @@ let
     boot.zfs.forceImportRoot = false;
     boot.zfs.devNodes = "/dev/disk/by-partlabel";
     fileSystems."/" = { device = "${pool}/root"; fsType = "zfs"; };
-    fileSystems."/boot" = { device = "/dev/disk/by-partlabel/ESP"; fsType = "vfat"; };
+    fileSystems."/boot" = { device = "/dev/disk/by-partlabel/${espLabel}"; fsType = "vfat"; };
     boot.loader.systemd-boot.enable = true;
   };
 
   # ESP at /boot, the vfat slot, the rest one pool with a legacy root — an ordinary disko
   # layout in this configuration; override a partition with lib.mkForce, or drop it and
-  # write your own. Both the install and the image read the same data.
-  layout = builder.lib.diskLayoutZfs { inherit device slotName pool; };
+  # write your own. Both the install and the image read the same data. pool and espLabel are
+  # the SAME bindings the fileSystems above use, so the layout and the mounts cannot drift.
+  layout = builder.lib.diskLayoutZfs { inherit device slotName pool espLabel; };
 
   host = import (pkgs.path + "/nixos/lib/eval-config.nix") {
     system = "x86_64-linux";

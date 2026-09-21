@@ -20,6 +20,10 @@ let
   # from there — so stage 1 reads a file that exists exactly when it runs.
   slotMount = "/var/lib/slot";
   poolKeyInitrd = "/pool.key";
+  # ONE binding each for the zfs hosts' pool and ESP partlabel — the layout, the runtime
+  # fileSystems (disk-zfs.nix) and the install overrides all read these, so none can drift.
+  zfsPool = "rpool";
+  espLabel = "ESP";
 
   evalHost = system: modules:
     import (pkgs.path + "/nixos/lib/eval-config.nix") {
@@ -40,17 +44,19 @@ let
   # E2E-POOL-ENCRYPTION witness rides the pool's postCreateHook, where the create now lives.
   zfsLayout = (import ../../lib/api.nix).diskLayoutZfs {
     device = targetDevice;
-    inherit slotName;
+    inherit slotName espLabel;
+    pool = zfsPool;
   };
   zfsEncLayout = (import ../../lib/api.nix).diskLayoutZfs {
     device = targetDevice;
-    inherit slotName slotMount;
+    inherit slotName slotMount espLabel;
+    pool = zfsPool;
     encryption = {
       keyInstall = "${installSlot}/pool.pass";
       keyBoot = poolKeyInitrd;
     };
     poolPostCreate =
-      ''${reportBin} "E2E-POOL-ENCRYPTION $(zfs get -H -o value encryption rpool)"'';
+      ''${reportBin} "E2E-POOL-ENCRYPTION $(zfs get -H -o value encryption ${zfsPool})"'';
   };
 
   noSecrets = {
@@ -147,19 +153,22 @@ in
     # disk-zfs.nix keeps the runtime truth (fileSystems, hostId, zfs boot options); the
     # layout template (enableConfig off) adds the disko data the install and the format-VM
     # read. ONE declaration, three consumers.
-    modules = [ ./modules/disk-zfs.nix diskoModule zfsLayout ];
+    modules = [
+      (import ./modules/disk-zfs.nix { pool = zfsPool; inherit espLabel; })
+      diskoModule zfsLayout
+    ];
     storage = "zfs";
     secrets = withSecrets;
     inherit slotName;
     diskoInstall = true;
-    installOverrides = { pool = "rpool"; };
+    installOverrides = { pool = zfsPool; };
   };
 
   zfs-enc = mk {
     name = "e2e-zfs-enc";
     # Its own machine identity: the reinstall e2e replaces the zfs host with this one and
     # a shared hostId would understate what a real replacement changes.
-    modules = [ ./modules/disk-zfs.nix diskoModule zfsEncLayout {
+    modules = [ (import ./modules/disk-zfs.nix { pool = zfsPool; inherit espLabel; }) diskoModule zfsEncLayout {
       networking.hostId = lib.mkForce "1badb002";
       # THE HOST's unlock story, none of which blocks knows: its slot partition mounts
       # here, and the initrd carries the passphrase from it — the file this host put in
@@ -180,7 +189,7 @@ in
     };
     inherit slotName;
     diskoInstall = true;
-    installOverrides = { pool = "rpool"; encrypted = true; };
+    installOverrides = { pool = zfsPool; encrypted = true; };
   };
 
   plain = mk {

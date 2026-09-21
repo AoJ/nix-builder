@@ -25,9 +25,18 @@ let
     modules = [ (import ./lib/host-record.nix { inherit lib; }) rawHost ];
   }).config;
 
-  # The slot name is the HOST's declaration, never a default here: a typo'd host attribute
-  # must fail eval, not silently land on a fallback.
-  slot = { name = host.slotName; sizeMiB = 4; };
+  # The slot exists only where there is something to put in it: a host that declares no
+  # secrets needs no slot, builds no slot partition, and need not name one. A host that DOES
+  # declare secrets must name it (never a default — the name has to match its layout's
+  # partition, and a default would be a second hidden source of that word).
+  hasSlot = host.secrets.files != [ ];
+  slotName =
+    if !hasSlot then null
+    else if host.slotName == null
+    then throw ("imagesFor(${host.name}): this host delivers secrets but names no slot"
+      + " — set slotName to the same name its storage layout gives the slot partition")
+    else host.slotName;
+  slot = if slotName == null then null else { name = slotName; sizeMiB = 4; };
 
   # The label is the one constant spanning eval and artifact: both sides derive it from
   # the same name through the same ids tool, and the e2e boot tests the agreement.
@@ -88,7 +97,7 @@ let
   # The extractor seam for the slot: composed from the host's declared deliveries today; a
   # storage layout that owns a shape would be READ here, not consulted by a block.
   slotFor = _format:
-    if builtins.elem "embedded" delivery
+    if slot != null && builtins.elem "embedded" delivery
     then { inherit (slot) name; sizeMiB = 4; }
     else null;
 
@@ -163,10 +172,13 @@ let
       inherit (host.install) pool disks report encrypted completion;
       storage = host.variants.runtime.storage;
       machine = host.variants.runtime.machine;
-      slotName = slot.name;
+      # No slot where the host carries no secrets: the installer builds no slot service and
+      # writes no slot partition to the target.
+      slotName = if slot == null then null else slot.name;
       slotFiles = map (f: f.target) host.secrets.files;
       inherit rootMode isoLabel;
-      slotFace = tools.slotFace { format = faceFormat; inherit (slot) name; };
+      slotFace = if slot == null then null
+                 else tools.slotFace { format = faceFormat; inherit (slot) name; };
     }).system;
 
   # Memoized per face as ATTRIBUTES, not calls: raw and qcow2 wrap the SAME installer, and

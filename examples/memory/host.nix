@@ -32,7 +32,7 @@ let
 in
 builder.lib.imagesFor {
   inherit pkgs host;
-  slotName = "secrets";
-  # No secrets declared: every secrets and personalize endpoint still exists and is a
-  # silent no-op. Nothing may key off "this host has a bundle".
+  # No secrets and no slotName: this appliance delivers nothing to a slot, so it names none
+  # and no slot partition is built. The secrets/personalize endpoints still exist as silent
+  # no-ops — nothing may key off "this host has a bundle".
 }

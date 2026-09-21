@@ -166,7 +166,7 @@ let
       image-raw-install = "eval-only";
       image-qcow2-install = "eval-only";
       image-iso-install = "eval-only";
-      image-kexec-install = "eval-only";
+      image-kexec-install = "booted";
       image-ipxe-install = "eval-only";
       image-raw-install-inmemory = "eval-only";
       image-qcow2-install-inmemory = "eval-only";
@@ -176,7 +176,7 @@ let
       image-personalize = "eval-only";
       image-personalize-iso = "eval-only";
       image-personalize-kexec = "eval-only";
-      closure = "eval-only";
+      closure = "booted";
       closure-live = "eval-only";
     };
 

@@ -18,13 +18,16 @@ let
   expectedSlotFiles = pkgs.writeText "${name}-slot-files"
     (lib.concatMapStrings (f: "${f}\n") slotFiles);
 
+  # The slot name the action fills on the target, empty for a host with no slot.
+  slotNameArg = if slotName == null then "" else slotName;
+
   # The action takes the same nine arguments either way; an image delivery has no create,
   # mount or toplevel to name, and says so with empty ones.
   actionArgs =
     if kind == "script"
-    then [ payload.script payload.toplevel slotName expectedSlotFiles
+    then [ payload.script payload.toplevel slotNameArg expectedSlotFiles
            storage pool (if encrypted then "true" else "false") ]
-    else [ "" "" slotName expectedSlotFiles storage pool "" ];
+    else [ "" "" slotNameArg expectedSlotFiles storage pool "" ];
 
   # What the delivery needs beyond the arguments, as environment: the action reads a
   # payload's pieces from here so the argument list stays the same for every shape.
@@ -98,7 +101,9 @@ in
   # Its contents are laid out at ONE published path and nothing here looks at what they
   # are: the host's own storage scripts read what they need from there, and the act
   # carries the same files to the target's slot.
-  systemd.services.slot = {
+  # No slot service for a host that carries no secrets: nothing is delivered, so nothing
+  # lays a slot out and the action fills none on the target.
+  systemd.services.slot = lib.mkIf (slotFace != null) {
     wantedBy = [ "multi-user.target" ];
     before = [ "action-install.service" ];
     serviceConfig.Type = "oneshot";
@@ -133,8 +138,8 @@ in
 
   systemd.services.action-install = {
     wantedBy = [ "multi-user.target" ];
-    after = [ "slot.service" ];
-    wants = [ "slot.service" ];
+    after = lib.optional (slotFace != null) "slot.service";
+    wants = lib.optional (slotFace != null) "slot.service";
     serviceConfig = {
       Type = "oneshot";
       StandardOutput = "journal+console";

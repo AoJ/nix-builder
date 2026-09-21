@@ -13,7 +13,7 @@
 let
   recordFor =
     { host
-    , slotName
+    , slotName ? null
     , secrets ? { }
     , install ? { }
     , name ? host.config.networking.hostName

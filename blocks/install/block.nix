@@ -102,11 +102,12 @@ in
     };
 
     slotName = mkOption {
-      type = types.strMatching "[a-z0-9][a-z0-9-]*";
+      type = types.nullOr (types.strMatching "[a-z0-9][a-z0-9-]*");
+      default = null;
       description = ''
         The slot's name, on BOTH sides: the installer reads its own, and fills the one the
-        target's layout provides under the same name. The installed system then finds its
-        secrets exactly where it would have, had the image written the slot.
+        target's layout provides under the same name. Null for a host that delivers no
+        secrets — the installer then builds no slot service and fills no slot on the target.
       '';
     };
 
@@ -133,8 +134,9 @@ in
     };
 
     slotFace = mkOption {
-      type = types.attrsOf types.str;
-      description = "Where the installer reads its install-time key (tools.slotFace for the wrapper's format).";
+      type = types.nullOr (types.attrsOf types.str);
+      default = null;
+      description = "Where the installer reads its install-time key (tools.slotFace); null for a slotless host.";
     };
 
     out = mkOption {

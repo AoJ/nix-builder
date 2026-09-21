@@ -38,7 +38,8 @@ encrypted=${7:-}
   "<slotFiles> <storage> <pool> <encrypted> <disk>..."
 shift 7
 disks=("$@")
-required slot_name slot_files storage
+# slot_name is empty for a host with no slot; slot_files and storage are always given.
+required slot_files storage
 # An image arrives through the environment, so the argument list is the same either way.
 payload_image=${payload_image:-}
 payload_bytes=
@@ -178,6 +179,10 @@ wipe_and_create() {
 # system builds from them (an initrd secret, say) sees them already in place.
 place_slot() {
   local disk dev part label target="" mnt="" own=no sc=0
+  if [ -z "$slot_name" ]; then
+    info "this host declares no slot -> the target gets none"
+    return 0
+  fi
   if [ -z "$(find "$install_slot" -mindepth 1 -maxdepth 1 -print -quit 2> /dev/null)" ]; then
     info "the slot carries nothing -> the target's slot stays as the layout made it"
     return 0

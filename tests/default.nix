@@ -19,6 +19,7 @@ let
     zfs-qcow2-boot = import ./e2e-zfs-qcow2-boot.nix { inherit pkgs compose hosts; };
     qcow2-boot = import ./e2e-qcow2-boot.nix { inherit pkgs compose hosts; };
     memory-iso-boot = import ./e2e-memory-iso-boot.nix { inherit pkgs compose hosts; };
+    slotless-install = import ./e2e-slotless-install.nix { inherit pkgs compose hosts; };
     ext4-raw-install = import ./e2e-ext4-raw-install.nix { inherit pkgs compose hosts; };
     zfs-inmemory-install = import ./e2e-zfs-inmemory-install.nix { inherit pkgs compose hosts; };
     memory-boot = import ./e2e-memory-boot.nix { inherit pkgs compose hosts; };

@@ -23,7 +23,7 @@
 # be a second source of that truth — exactly how a host silently drifts into formatting
 # storage it then cannot find. espSize/slotSize default because they are standalone sizes
 # with no counterpart to drift against.
-{ device, slotName, pool, espLabel, espSize ? "512M", slotSize ? "8M"
+{ device, slotName ? null, pool, espLabel, espSize ? "512M", slotSize ? "8M"
 , encryption ? null, poolPostCreate ? "", slotMount ? null }:
 { lib, ... }:
 {
@@ -33,6 +33,8 @@
     inherit device;
     content = {
       type = "gpt";
+      # The slot partition rides only when the host names a slot (it delivers secrets — an
+      # encrypted host always does, for its passphrase). slotName = null: ESP + pool, no slot.
       partitions = {
         # Labels are LOOKUP HANDLES, stated — disko's default is disk-<disk>-<part>, and
         # ESP is what the host's own fileSystems."/boot" mounts by.
@@ -43,6 +45,13 @@
           label = espLabel;
           content = { type = "filesystem"; format = "vfat"; mountpoint = "/boot"; };
         };
+        zfs = {
+          priority = 3;
+          size = "100%";
+          label = "zfs";
+          content = { type = "zfs"; inherit pool; };
+        };
+      } // lib.optionalAttrs (slotName != null) {
         ${slotName} = {
           priority = 2;
           size = slotSize;
@@ -54,12 +63,6 @@
           # fills it, the running system mounts it on demand.
           content = { type = "filesystem"; format = "vfat"; }
             // lib.optionalAttrs (slotMount != null) { mountpoint = slotMount; };
-        };
-        zfs = {
-          priority = 3;
-          size = "100%";
-          label = "zfs";
-          content = { type = "zfs"; inherit pool; };
         };
       };
     };

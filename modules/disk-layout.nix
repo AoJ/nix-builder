@@ -10,7 +10,7 @@
 # `device` is the target's stable identity (/dev/disk/by-id/…) and the install's blast
 # radius; `slotName` is the slot partition's partlabel, and the host record must name the
 # same slot.
-{ device, slotName, espSize ? "512M", slotSize ? "8M" }:
+{ device, slotName ? null, espSize ? "512M", slotSize ? "8M" }:
 { lib, ... }:
 {
   disko.devices.disk.main = {
@@ -18,6 +18,8 @@
     inherit device;
     content = {
       type = "gpt";
+      # The slot partition rides only when the host names a slot (it delivers secrets);
+      # slotName = null builds an ESP + root and no slot.
       partitions = {
         ESP = {
           size = espSize;
@@ -28,6 +30,7 @@
           size = "100%";
           content = { type = "filesystem"; format = "ext4"; mountpoint = "/"; };
         };
+      } // lib.optionalAttrs (slotName != null) {
         ${slotName} = {
           size = slotSize;
           # disko's default GPT name is disk-<disk>-<partition>, and the slot contract is

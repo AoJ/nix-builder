@@ -75,7 +75,7 @@ let
     }];
   };
 
-  mk = { name, modules, storage, secrets, slotName, install ? syntheticInstall,
+  mk = { name, modules, storage, secrets, slotName ? null, install ? syntheticInstall,
          system ? "x86_64-linux", diskoInstall ? false, installOverrides ? { } }:
     let
       runtime = evalHost system ([
@@ -145,7 +145,7 @@ in
     }) ];
     storage = "squashfs";
     secrets = noSecrets;
-    inherit slotName;
+    # No secrets -> no slot, so this appliance names none (slotName defaults to null).
   };
 
   zfs = mk {
@@ -192,12 +192,19 @@ in
     installOverrides = { pool = zfsPool; encrypted = true; };
   };
 
+  # A disk host with NO secrets: it names no slot (slotName defaults to null), the layout
+  # template builds no slot partition, and its installer builds no slot service — the
+  # slotless install path, booted in e2e-slotless-install. A real disko installer, unlike
+  # the withSecrets ext4-install, so the two prove the with-slot and slotless paths apart.
   plain = mk {
     name = "e2e-plain";
-    modules = [ (import ./modules/disk-ext4.nix { storeLabel = tools.diskLabels.store; espLabel = tools.diskLabels.esp; }) ];
+    modules = [
+      diskoModule
+      ((import ../../lib/api.nix).diskLayout { device = targetDevice; })
+    ];
     storage = "ext4";
     secrets = noSecrets;
-    inherit slotName;
+    diskoInstall = true;
   };
 
   # The arch-split tripwire: a REAL aarch64 configuration, evaluated on this x86 box (pure

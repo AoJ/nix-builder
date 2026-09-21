@@ -71,12 +71,15 @@ in
     };
 
     slotName = mkOption {
-      type = types.strMatching "[a-z0-9][a-z0-9-]*";
+      type = types.nullOr (types.strMatching "[a-z0-9][a-z0-9-]*");
+      default = null;
       description = ''
         The slot: the partition (or file, per format) phase 2 writes into. The host's ONE
         declaration of it — the storage layout that provides the partition and this field
-        must name the same thing, and there is deliberately no default, so a typo fails
-        here instead of producing an artifact whose slot nothing can find.
+        must name the same thing. Null for a host that delivers NO secrets: it needs no
+        slot, so it need not name one — and no slot partition is built. A host that DOES
+        declare secrets and leaves this null is refused by name, not given a default (a
+        default here would be a second hidden source of the label the layout must match).
       '';
     };
 

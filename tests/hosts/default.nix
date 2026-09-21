@@ -123,7 +123,7 @@ in
 {
   ext4 = mk {
     name = "e2e-ext4";
-    modules = [ ./modules/disk-ext4.nix ];
+    modules = [ (import ./modules/disk-ext4.nix { storeLabel = tools.diskLabels.store; espLabel = tools.diskLabels.esp; }) ];
     storage = "ext4";
     secrets = withSecrets;
     inherit slotName;
@@ -133,7 +133,9 @@ in
     name = "e2e-memory";
     modules = [ (import ../../modules/read-only-store.nix {
       roStore = tools.roStore;
-      device = "/dev/disk/by-partlabel/nixos";
+      # No device: the appliance's runtime store IS the image's store partition, found by
+      # the label the image stamps — read from the one source, never restated here.
+      storeLabel = tools.diskLabels.store;
     }) ];
     storage = "squashfs";
     secrets = noSecrets;
@@ -183,7 +185,7 @@ in
 
   plain = mk {
     name = "e2e-plain";
-    modules = [ ./modules/disk-ext4.nix ];
+    modules = [ (import ./modules/disk-ext4.nix { storeLabel = tools.diskLabels.store; espLabel = tools.diskLabels.esp; }) ];
     storage = "ext4";
     secrets = noSecrets;
     inherit slotName;
@@ -196,7 +198,7 @@ in
   arm = mk {
     name = "e2e-arm";
     system = "aarch64-linux";
-    modules = [ ./modules/disk-ext4.nix ];
+    modules = [ (import ./modules/disk-ext4.nix { storeLabel = tools.diskLabels.store; espLabel = tools.diskLabels.esp; }) ];
     storage = "ext4";
     secrets = withSecrets;
     inherit slotName;
@@ -227,7 +229,7 @@ in
   # image's own (ESP, store, slot), which is why nothing here describes one.
   image-install = mk {
     name = "e2e-image-install";
-    modules = [ ./modules/disk-ext4.nix ];
+    modules = [ (import ./modules/disk-ext4.nix { storeLabel = tools.diskLabels.store; espLabel = tools.diskLabels.esp; }) ];
     storage = "ext4";
     secrets = withSecrets;
     inherit slotName;

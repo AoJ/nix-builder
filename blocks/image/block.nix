@@ -180,7 +180,7 @@ in
         inherit (config) name;
         rootPaths = config.storePaths;
         inherit shape;
-        label = "nixos";
+        label = tools.diskLabels.store;
         # A writable root is a bootable NixOS root, so it carries the profile links a first
         # switch reads; a read-only or initrd store is a store and nothing more.
         profile = if shape == "ext4" then config.toplevel else null;
@@ -238,8 +238,8 @@ in
       disk = tools.gptDisk {
         inherit (config) name;
         partitions = [
-          { fs = "vfat"; label = "ESP"; img = espImg; }
-          { fs = shape; label = "nixos"; img = store.img; }
+          { fs = "vfat"; label = tools.diskLabels.esp; img = espImg; }
+          { fs = shape; label = tools.diskLabels.store; img = store.img; }
         ] ++ lib.optional (config.slot != null) {
           fs = "vfat"; code = "8300"; label = config.slot.name; img = slotImg;
         };
@@ -282,7 +282,7 @@ in
       diskInmemory = tools.gptDisk {
         inherit (config) name;
         partitions = [
-          { fs = "vfat"; label = "ESP"; img = espInmemory; }
+          { fs = "vfat"; label = tools.diskLabels.esp; img = espInmemory; }
         ] ++ lib.optional (config.slot != null) {
           fs = "vfat"; code = "8300"; label = config.slot.name; img = slotImg;
         };

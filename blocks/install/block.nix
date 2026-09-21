@@ -214,6 +214,7 @@ in
             kind = p.kind;
             actionInstall = tools.actionInstall { inherit (config) storage; };
             inherit (tools) netbootFace isoFace;
+            storeLabel = tools.diskLabels.store;
           })
         ];
       };

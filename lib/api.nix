@@ -15,8 +15,11 @@ rec {
       modules = {
         liveNetboot = import ../modules/live-netboot.nix { face = tools.netbootFace; };
         liveIso = label: import ../modules/live-iso.nix { inherit label; face = tools.isoFace; };
-        readOnlyStore = { device }:
-          import ../modules/read-only-store.nix { inherit (tools) roStore; inherit device; };
+        readOnlyStore = { device ? null }:
+          import ../modules/read-only-store.nix ({
+            inherit (tools) roStore;
+            storeLabel = tools.diskLabels.store;
+          } // lib.optionalAttrs (device != null) { inherit device; });
         inherit diskLayout diskLayoutZfs;
       };
 

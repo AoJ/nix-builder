@@ -23,9 +23,10 @@ let
     modules = [
       configuration
       # The read-only store: the squashfs partition the image writes, overlaid and
-      # registered, with the tmpfs root over it. The partition is found by the label the
-      # image gives it.
-      (modules.readOnlyStore { device = "/dev/disk/by-partlabel/nixos"; })
+      # registered, with the tmpfs root over it. No device stated — the appliance's runtime
+      # store IS that partition, found by the label the image stamps (one source, so a
+      # rename cannot silently leave the host without a root).
+      (modules.readOnlyStore { })
     ];
   };
 in

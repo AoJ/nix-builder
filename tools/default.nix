@@ -45,4 +45,11 @@ in
   # Where a slot lives per format — the ONE source the image builds from and the installer
   # reads from. (The marker restates it on purpose, to gate drift; see marker.nix.)
   slotFace = import ./slot-face.nix;
+
+  # The fixed partition labels of the disk USERSPACE ASSEMBLY builds (the raw/qcow2 path
+  # without a disko layout, and the squashfs appliance's disk). The ONE source: the image
+  # stamps the partition with these, and a host mounting its store off that disk reads the
+  # store label back from here — so the two cannot drift into a silently-unbootable host.
+  # A disko-owned disk is NOT this: it labels its own partitions, read from the layout.
+  diskLabels = { esp = "ESP"; store = "nixos"; };
 }

@@ -6,7 +6,7 @@
 # exactly where the host boots, and carries nothing the host did not claim to need.
 { name, kind, payload, pool, storage, encrypted, slotName, slotFiles
 , rootMode, isoLabel, slotFace, disks, report, machine, actionInstall, completion, handover
-, netbootFace, isoFace }:
+, netbootFace, isoFace, storeLabel }:
 
 { pkgs, lib, modulesPath, ... }:
 let
@@ -78,8 +78,11 @@ in
     RebootWatchdogSec = "300s";
   };
 
+  # The disk-rooted installer's OWN root is the store partition the image assembled for it,
+  # found by the label the image stamps — read from the one source, not restated as a
+  # literal that a rename could silently break.
   fileSystems."/" = lib.mkIf (rootMode == "disk") {
-    device = "/dev/disk/by-partlabel/nixos";
+    device = "/dev/disk/by-partlabel/${storeLabel}";
     fsType = "ext4";
   };
 

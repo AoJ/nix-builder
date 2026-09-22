@@ -40,7 +40,7 @@ in
       local tree="$1" append="$2" log="$3"
       shift 3
       sc=0
-      timeout 600 qemu-system-x86_64 -enable-kvm -cpu host -m 3072 -smp "$(( NIX_BUILD_CORES > 0 ? NIX_BUILD_CORES : 1 ))" \
+      timeout 600 qemu-system-x86_64 -enable-kvm -cpu host -m 3072 -smp "$(( $(nproc) > 1 ? $(nproc) - 1 : 1 ))" \
         -kernel "$tree/kernel" -initrd "$tree/initrd" -append "$append" \
         "$@" \
         -serial file:"$log" -display none -no-reboot || sc=$?

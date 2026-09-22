@@ -30,7 +30,7 @@ in
     [ -n "$cmdline" ] || { echo "no command line in kexec.sh" >&2; exit 1; }
 
     sc=0
-    timeout 600 qemu-system-x86_64 -enable-kvm -cpu host -m 2048 -smp "$(( NIX_BUILD_CORES > 0 ? NIX_BUILD_CORES : 1 ))" \
+    timeout 600 qemu-system-x86_64 -enable-kvm -cpu host -m 2048 -smp "$(( $(nproc) > 1 ? $(nproc) - 1 : 1 ))" \
       -kernel tree/kernel -initrd tree/initrd -append "$cmdline" \
       -drive if=none,id=eout,format=raw,file=result.img \
       -device virtio-blk-pci,drive=eout,serial=e2eout \

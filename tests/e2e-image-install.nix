@@ -38,7 +38,7 @@ in
 
     echo "== the installer writes the image and hands over =="
     sc=0
-    timeout 3000 qemu-system-x86_64 -enable-kvm -cpu host -m 3072 -smp "$(( NIX_BUILD_CORES > 0 ? NIX_BUILD_CORES : 1 ))" \
+    timeout 3000 qemu-system-x86_64 -enable-kvm -cpu host -m 3072 -smp "$(( $(nproc) > 1 ? $(nproc) - 1 : 1 ))" \
       -kernel tree/kernel -initrd tree/initrd -append "$cmdline" \
       -drive if=none,id=target,format=raw,file=target.img \
       -device virtio-blk-pci,drive=target,serial=target \

@@ -43,7 +43,7 @@ in
     # stub refuses with Out of Resources. The kexec e2es escape this (qemu -initrd loads it
     # once); a dd'd inmemory image does not.
     sc=0
-    timeout 3600 qemu-system-x86_64 -enable-kvm -cpu host -m 6144 -smp "$(( NIX_BUILD_CORES > 0 ? NIX_BUILD_CORES : 1 ))" \
+    timeout 3600 qemu-system-x86_64 -enable-kvm -cpu host -m 6144 -smp "$(( $(nproc) > 1 ? $(nproc) - 1 : 1 ))" \
       -drive if=pflash,format=raw,readonly=on,file=${pkgs.OVMF.fd}/FV/OVMF_CODE.fd \
       -drive if=pflash,format=raw,file=vars.fd \
       -drive if=none,id=target,format=raw,file=target.img \
@@ -60,7 +60,7 @@ in
     echo "== phase B: the SAME disk boots the installed zfs system alone =="
     install -m 0644 ${pkgs.OVMF.fd}/FV/OVMF_VARS.fd vars2.fd
     sc=0
-    timeout 600 qemu-system-x86_64 -enable-kvm -cpu host -m 1024 -smp "$(( NIX_BUILD_CORES > 0 ? NIX_BUILD_CORES : 1 ))" \
+    timeout 600 qemu-system-x86_64 -enable-kvm -cpu host -m 1024 -smp "$(( $(nproc) > 1 ? $(nproc) - 1 : 1 ))" \
       -drive if=pflash,format=raw,readonly=on,file=${pkgs.OVMF.fd}/FV/OVMF_CODE.fd \
       -drive if=pflash,format=raw,file=vars2.fd \
       -drive if=none,id=target,format=raw,file=target.img \

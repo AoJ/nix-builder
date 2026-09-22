@@ -20,7 +20,7 @@ pkgs.runCommand name
     ${prepare}
 
     sc=0
-    timeout 600 qemu-system-x86_64 -enable-kvm -cpu host -m 1024 -smp "$(( NIX_BUILD_CORES > 0 ? NIX_BUILD_CORES : 1 ))" \
+    timeout 600 qemu-system-x86_64 -enable-kvm -cpu host -m 1024 -smp "$(( $(nproc) > 1 ? $(nproc) - 1 : 1 ))" \
       -drive if=pflash,format=raw,readonly=on,file=${pkgs.OVMF.fd}/FV/OVMF_CODE.fd \
       -drive if=pflash,format=raw,file=vars.fd \
       -drive if=virtio,format=${imageFormat},file=disk.img \

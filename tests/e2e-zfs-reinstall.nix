@@ -53,7 +53,7 @@ in
     run_qemu() {
       local tree="$1" append="$2" res="$3" log="$4"
       sc=0
-      timeout 3000 qemu-system-x86_64 -enable-kvm -cpu host -m 3072 -smp "$(( NIX_BUILD_CORES > 0 ? NIX_BUILD_CORES : 1 ))" \
+      timeout 3000 qemu-system-x86_64 -enable-kvm -cpu host -m 3072 -smp "$(( $(nproc) > 1 ? $(nproc) - 1 : 1 ))" \
         -kernel "$tree/kernel" -initrd "$tree/initrd" -append "$append" \
         -drive if=none,id=target,format=raw,file=target.img \
         -device virtio-blk-pci,drive=target,serial=target \
@@ -68,7 +68,7 @@ in
       local res="$1" log="$2"
       install -m 0644 ${pkgs.OVMF.fd}/FV/OVMF_VARS.fd "vars-$res.fd"
       sc=0
-      timeout 600 qemu-system-x86_64 -enable-kvm -cpu host -m 1024 -smp "$(( NIX_BUILD_CORES > 0 ? NIX_BUILD_CORES : 1 ))" \
+      timeout 600 qemu-system-x86_64 -enable-kvm -cpu host -m 1024 -smp "$(( $(nproc) > 1 ? $(nproc) - 1 : 1 ))" \
         -drive if=pflash,format=raw,readonly=on,file=${pkgs.OVMF.fd}/FV/OVMF_CODE.fd \
         -drive if=pflash,format=raw,file="vars-$res.fd" \
         -drive if=none,id=target,format=raw,file=target.img \

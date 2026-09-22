@@ -92,6 +92,15 @@ pkgs.runCommand "test-personalize"
     echo "== phase one stayed secret-free: the pristine artifact does not hold the key =="
     ! mdir -b -i ${slotted.file}@@"$off" :: | grep -q sops.age
 
+    echo "== partition streaming: a copy and a stdout stream land the key, input stays pristine =="
+    install -m 0644 ${slotted.file} psrc.img
+    cp psrc.img ppristine.img
+    ${onPartition} psrc.img pcopy.img
+    mcopy -i pcopy.img@@"$off" ::/sops.age pgc && cmp pgc ${fixture}/host.key
+    ${onPartition} psrc.img - > pstream.img
+    mcopy -i pstream.img@@"$off" ::/sops.age pgs && cmp pgs ${fixture}/host.key
+    cmp psrc.img ppristine.img
+
     echo "== every content form lands, and env is read at RUN time, not eval =="
     install -m 0644 ${slotted.file} forms.img
     FIXTURE_SECRET='from the environment' ${everyForm} forms.img
@@ -129,9 +138,21 @@ pkgs.runCommand "test-personalize"
     grep -q 'holds no filesystem' refusal2.log
     cmp hole.img hole-pristine.img
 
-    echo "== file slot in an iso, JSON bundle: found by report_lba, key lands =="
-    install -m 0644 ${slottedIso.file} work.iso
-    ${onFile} work.iso
+    echo "== file slot in an iso: in-place, a copy, and a stdout stream all land the key =="
+    isolba() { xorriso -indev "$1" -find '${slottedIso.slot.path}' -exec report_lba -- 2>/dev/null \
+      | awk -F, '/^File data lba/ { gsub(/ /, "", $2); print $2 }'; }
+    install -m 0644 ${slottedIso.file} isrc.iso
+    cp isrc.iso ipristine.iso
+    cp isrc.iso inplace.iso
+    ${onFile} inplace.iso
+    ioff=$(( $(isolba inplace.iso) * 2048 ))
+    mcopy -i inplace.iso@@"$ioff" ::/sops.age igi && cmp igi ${fixture}/host.key
+    ${onFile} isrc.iso icopy.iso
+    mcopy -i icopy.iso@@"$ioff" ::/sops.age igc && cmp igc ${fixture}/host.key
+    ${onFile} isrc.iso - > istream.iso
+    mcopy -i istream.iso@@"$ioff" ::/sops.age igs && cmp igs ${fixture}/host.key
+    echo "== the iso input the copy/stream read stayed byte-for-byte pristine =="
+    cmp isrc.iso ipristine.iso
 
     echo "== initrd-append: the RESERVED slot segment is required, then the file rides =="
     mkdir tree && cp ${tree.file}/* tree/ && chmod -R +w tree
@@ -142,6 +163,18 @@ pkgs.runCommand "test-personalize"
     ! ${onInitrd} "$PWD/bare-tree" 2> refusal3.log
     grep -q 'no slot segment' refusal3.log
     cmp bare-tree/initrd ${bareTree.file}/initrd
+
+    echo "== initrd streaming: copy and stdout stream match, differ from pristine, list the file =="
+    mkdir isrc-tree && cp ${tree.file}/* isrc-tree/ && chmod -R +w isrc-tree
+    cp isrc-tree/initrd itpristine
+    ${onInitrd} "$PWD/isrc-tree" icopy.initrd
+    ${onInitrd} "$PWD/isrc-tree" - > istream.initrd
+    cmp icopy.initrd istream.initrd
+    cmp isrc-tree/initrd itpristine
+    ! cmp -s icopy.initrd itpristine
+    pre=$(stat -c%s itpristine)
+    pad=$(( (4 - pre % 4) % 4 ))
+    tail -c +$((pre + pad + 1)) icopy.initrd | cpio -t --quiet | grep -qxF sops.age
 
     touch $out
   ''

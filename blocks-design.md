@@ -600,7 +600,17 @@ and nothing is copied until every check has passed:
    and the reason `image` leaves the slot formatted;
 3. **every declared file has bytes to place** — a source that resolves to nothing is a named
    refusal before the first write, never a file quietly left out;
-4. **read back what landed**, out of the artifact.
+4. **read back what landed** — out of the filled slot, before it is placed.
+
+**Where the filled artifact lands is the caller's, via a second argument.** Omitted, the runner
+patches the input in place (the default, and what an e2e boots). Given a path, or `-` for stdout,
+it leaves the input untouched and emits a filled artifact instead: the bytes before the slot, the
+filled slot, the bytes after — the slot's window substituted in a stream, byte-precise, never
+rebuilding the image. Only slot-sized bytes of secret ever exist, in a tmpfs the size of the slot,
+never the image. This is what lets a build server fill a slot and send the result straight to a
+hypervisor without the secret-bearing artifact ever touching the build host's disk — offset and
+size still read out of the artifact, so a wrong offset is refused, not silently written. The
+convention is one arg on the runner, identical whether it is a flake app or `getExe`'d in a deploy.
 
 ## The slot
 

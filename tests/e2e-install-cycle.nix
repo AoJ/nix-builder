@@ -27,7 +27,7 @@ in
 
     echo "== phase A: the installer boots and installs =="
     sc=0
-    timeout 3000 qemu-system-x86_64 -enable-kvm -cpu host -m 2048 -smp 1 \
+    timeout 3000 qemu-system-x86_64 -enable-kvm -cpu host -m 2048 -smp "$(( NIX_BUILD_CORES > 0 ? NIX_BUILD_CORES : 1 ))" \
       -drive if=pflash,format=raw,readonly=on,file=${pkgs.OVMF.fd}/FV/OVMF_CODE.fd \
       -drive if=pflash,format=raw,file=vars.fd \
       -drive if=virtio,format=raw,file=installer.img \
@@ -45,7 +45,7 @@ in
     echo "== phase B: the installed disk boots ALONE =="
     install -m 0644 ${pkgs.OVMF.fd}/FV/OVMF_VARS.fd vars2.fd
     sc=0
-    timeout 600 qemu-system-x86_64 -enable-kvm -cpu host -m 1024 -smp 1 \
+    timeout 600 qemu-system-x86_64 -enable-kvm -cpu host -m 1024 -smp "$(( NIX_BUILD_CORES > 0 ? NIX_BUILD_CORES : 1 ))" \
       -drive if=pflash,format=raw,readonly=on,file=${pkgs.OVMF.fd}/FV/OVMF_CODE.fd \
       -drive if=pflash,format=raw,file=vars2.fd \
       -drive if=none,id=target,format=raw,file=target.img \

@@ -5,7 +5,8 @@
 # failure this runner exists to prevent is a test that exists but nothing runs.
 #
 # Each target runs as its own nix process (one host's eval fits this box, all of them in
-# one eval do not) and e2e run with --max-jobs 1 (two qemu + builds OOM the machine).
+# one eval do not) and e2e run with --max-jobs 1 and --cores $e2e_cores (two qemu + builds
+# OOM the machine; the guest's vcpu count follows those cores through $NIX_BUILD_CORES).
 # Sequential on purpose. Logs: docs/blocks/.logs/<target>.log; a PASS/FAIL summary at the
 # end, exit nonzero on any failure.
 #
@@ -34,6 +35,10 @@ mkdir -p "$logdir"
 # Overridable budgets: eval-only targets are minutes, an e2e with a cold store is not.
 eval_timeout="${eval_timeout:-1800}"
 e2e_timeout="${e2e_timeout:-7200}"
+# Cores an e2e build may use — and, THROUGH $NIX_BUILD_CORES, the guest's vcpu count
+# (-smp). Two is right for this shared 6-core box (two qemu + builds OOM higher); a
+# dedicated big box wants `e2e_cores=8 run-all.sh …` for a faster, wider install.
+e2e_cores="${e2e_cores:-2}"
 
 list_only=0
 filters=()
@@ -102,7 +107,7 @@ for t in "${targets[@]}"; do
   jobs=()
   expect_fail=0
   case "$attr" in
-    e2e-*) budget="$e2e_timeout"; jobs=(--max-jobs 1 --cores 2) ;;
+    e2e-*) budget="$e2e_timeout"; jobs=(--max-jobs 1 --cores "$e2e_cores") ;;
     # A hole is a law-forbidden endpoint: its artifact MUST fail to build, with its law.
     hole-*) expect_fail=1 ;;
   esac

@@ -40,7 +40,11 @@ in
     mcopy -i result-a.img ::/log result-a 2>/dev/null || touch result-a
     echo "=== install result:" >&2; cat result-a >&2
     grep -q "installer: slot taken over" result-a
-    grep -q "INSTALL-OK e2e-zfs" result-a
+    grep -q "INSTALL-OK e2e-zfs" result-a || {
+      echo "=== installer console (install.log tail) — WHY the install failed:" >&2
+      tail -n 100 install.log >&2
+      exit 1
+    }
 
     echo "== phase B: the installed disk boots ALONE =="
     install -m 0644 ${pkgs.OVMF.fd}/FV/OVMF_VARS.fd vars2.fd

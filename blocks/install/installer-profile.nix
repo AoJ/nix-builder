@@ -155,13 +155,20 @@ in
     script = ''
       set -euo pipefail
       ${reportFn}
+      # Carry the ACTUAL reason onto the witness disk, not only "INSTALL-FAILED": the action's
+      # fatal is on the console (journal+console), but an e2e reads the witness, and a flake that
+      # only shows on CI has to name the failing step there or it cannot be fixed without a repro.
       fail() {
-        report_line "INSTALL-FAILED ${name}"
+        report_line "INSTALL-FAILED ${name}: ''${reason:-see console}"
         systemctl poweroff
         exit 1
       }
-      ${payloadEnv}action-install ${
-        lib.escapeShellArgs (actionArgs ++ disks)} || fail
+      reason=""
+      if ! ${payloadEnv}action-install ${
+        lib.escapeShellArgs (actionArgs ++ disks)} 2> >(tee /run/install.err >&2); then
+        reason="$(tail -n 2 /run/install.err 2> /dev/null | tr '\n' ' ' || true)"
+        fail
+      fi
       report_line "INSTALL-OK ${name}"
       ${finish}
     '';

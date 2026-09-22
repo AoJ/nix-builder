@@ -125,6 +125,15 @@ instead of hidden in a flag.
 **Every host exposes the whole set, and every endpoint is under test** — an endpoint that exists
 only for the host that needs it is an endpoint nobody notices breaking.
 
+**A law-forbidden combination is a hole, and a hole is DATA, not a throw.** The endpoint is
+present and carries `{ hole = { law; reason; replacement; }; }`; its `.file` throws the law if
+someone builds it outright, but a consumer reads `? hole` to filter it (without forcing) and
+`.hole` to learn why and what to use instead. This is the difference between a hole and a bug: a
+MISCONFIGURED endpoint throws its own error when forced, so it is NOT filtered and stays loud —
+where a blanket `tryEval` would have swallowed both. So a host's flake exposes the WHOLE set
+uniformly (`builder.lib.deliverables` splits it into `packages` / `apps` / `holes`); nothing is
+hand-listed per host, and `nix flake show` never crashes on a hole.
+
 ### The two layers — DECIDED
 
 **`#image-<format>` is the HOST, in that format.** The full host closure, packed so a firmware, a
@@ -159,8 +168,9 @@ layout-less ext4. No target-arch code executes on any image path.
 | disk / ext4 | yes (L1) | yes | yes (L4) | yes |
 | disk / zfs | yes (L1) | yes — format-VM (unencrypted + layout; encrypted is **L3**, no-layout refuses) | yes (L4) | yes |
 
-Every hole is a law, not a per-host switch: it is a property of `runtime.storage` (and, for the
-zfs runtime images, of `install.encrypted`), reads the same for every host that has one, and
+Every hole is a law, not a per-host switch, and a marker a consumer can read, not a crash: it is
+a property of `runtime.storage` (and, for the zfs runtime images, of `install.encrypted`), reads
+the same for every host that has one, and
 names its own replacement.
 
 ## The blocks

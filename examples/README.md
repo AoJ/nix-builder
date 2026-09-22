@@ -5,7 +5,9 @@ does each of those things come from**. Each directory hands one evaluated NixOS 
 `builder.lib.imagesFor` and gets the whole endpoint set back — so what you see in a
 `host.nix` is exactly the part a configuration cannot state, and nothing else.
 
-They are also runnable (`nix build`), but that is not the point of them.
+And each one is BOOTED by the suite — the very file you copy, not a parallel test host — so
+both halves are proven: the host produces its endpoints, AND it comes up and reads its own
+slot. See [How they stay true](#how-they-stay-true).
 
 | example | the host it describes | what it gets |
 |---|---|---|
@@ -101,3 +103,11 @@ evaluated against this checkout through the same API the flake exports, and ever
 endpoint its `flake.nix` names is forced to a `.drv`. So an example cannot drift from the
 code, and cannot promise an endpoint the composer would refuse. The `flake.nix` wiring
 itself is not evaluated — it points at GitHub on purpose.
+
+But eval is not use. So each example is also BOOTED, as the actual `host.nix` a user copies
+— its witness modules threaded through an `extraModules` seam so the copied file stays clean
+— by `tests:e2e-example-<name>`: ext4, zfs and memory boot their `#image-raw` and, where they
+have a slot, mount it; the encrypted host is INSTALLED first (its `#image-raw` is a hole) and
+the target then boots unattended, unlocking the pool with the key the install delivered. An
+example that produced a slot no config could mount, or a config that did not boot, fails here
+— which is where "it builds" stops standing in for "it works".

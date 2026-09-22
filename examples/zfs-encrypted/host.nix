@@ -7,7 +7,11 @@
 # Encryption follows the install (law L3): no image is ever encrypted — `#image-raw` stays
 # a hole — because a key in a cacheable derivation is store-public for life. blocks still
 # carries the `pool.pass` file into the slot and never opens it.
-{ pkgs, builder, diskoModule }:
+# extraModules is empty for a real host; the suite threads its witness modules through it to
+# INSTALL and BOOT this very example (tests/e2e-example-zfs-encrypted.nix). secretsFiles is
+# likewise the real deploy files by default; the suite passes fixtures so the install has a
+# real passphrase to create the pool with.
+{ pkgs, builder, diskoModule, extraModules ? [ ], secretsFiles ? null }:
 
 let
   device = "/dev/disk/by-id/virtio-main";
@@ -67,7 +71,7 @@ let
 
   host = import (pkgs.path + "/nixos/lib/eval-config.nix") {
     system = "x86_64-linux";
-    modules = [ configuration diskoModule layout ];
+    modules = [ configuration diskoModule layout ] ++ extraModules;
   };
 in
 builder.lib.imagesFor {
@@ -77,7 +81,7 @@ builder.lib.imagesFor {
   # learns nothing about what either file is for.
   secrets = {
     delivery = [ "embedded" "sidecar" ];
-    files = [
+    files = if secretsFiles != null then secretsFiles else [
       { target = "/sops.age"; content.file = "/run/secrets/example-zfs-enc/host.key"; }
       { target = "/pool.pass"; content.file = "/run/secrets/example-zfs-enc/pool.pass"; }
     ];

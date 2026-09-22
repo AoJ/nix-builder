@@ -1,8 +1,6 @@
-# Booting the EXAMPLE a user copies — not a parallel test host, the very examples/ext4 host,
-# with only the witness modules threaded through its extraModules seam. It proves what the
-# examples/ gate (eval-only) never could: the example's produced image BOOTS, its userspace
-# comes up, and the embedded slot its config mounts is really there and mountable. The example
-# is a thing to USE; this is where "it boots" stops being a claim it makes about itself.
+# Booting the zfs EXAMPLE a user copies: an unencrypted pool the format-VM makes from the
+# host's disko layout, its root a zfs dataset. Proves the copied file boots — the pool
+# imports, userspace comes up, and the embedded slot its config mounts is really there.
 { pkgs }:
 
 let
@@ -11,7 +9,7 @@ let
   builder = { lib = import ../lib/api.nix; };
   diskoModule = (import ../disko-pin.nix) + "/module.nix";
 
-  endpoints = import ../examples/ext4/host.nix {
+  endpoints = import ../examples/zfs/host.nix {
     inherit pkgs builder diskoModule;
     extraModules = [
       (import ./hosts/modules/e2e-result.nix { inherit record; })
@@ -23,10 +21,10 @@ in
 {
   witnesses = [ ];
   check = boot {
-    name = "e2e-example-ext4";
+    name = "e2e-example-zfs";
     image = endpoints.image-raw.file;
     expect = ''
-      grep -q "E2E-BOOT-OK example-ext4" result
+      grep -q "E2E-BOOT-OK example-zfs" result
       grep -q "E2E-EXAMPLE-SLOT-MOUNTED" result
       grep -q "E2E-KEY-EMPTY" result
     '';

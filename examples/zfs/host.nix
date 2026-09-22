@@ -8,7 +8,9 @@
 #
 # The runtime disk images are NO LONGER holes (that was L2 before the format-VM): `#image-raw`
 # is real. See README.md.
-{ pkgs, builder, diskoModule }:
+# extraModules is empty for a real host; the suite threads its witness modules through it to
+# BOOT this very example (tests/e2e-example-zfs.nix).
+{ pkgs, builder, diskoModule, extraModules ? [ ] }:
 
 let
   device = "/dev/disk/by-id/virtio-main";
@@ -36,6 +38,15 @@ let
     fileSystems."/" = { device = "${pool}/root"; fsType = "zfs"; };
     fileSystems."/boot" = { device = "/dev/disk/by-partlabel/${espLabel}"; fsType = "vfat"; };
     boot.loader.systemd-boot.enable = true;
+
+    # CONSUME the embedded slot: the vfat partition the layout gives it, by the partlabel that
+    # IS slotName — your input, one source. `nofail` so a host whose slot phase 2 has not yet
+    # filled still boots.
+    fileSystems."/run/secrets" = {
+      device = "/dev/disk/by-partlabel/${slotName}";
+      fsType = "vfat";
+      options = [ "ro" "nofail" ];
+    };
   };
 
   # ESP at /boot, the vfat slot, the rest one pool with a legacy root — an ordinary disko
@@ -46,7 +57,7 @@ let
 
   host = import (pkgs.path + "/nixos/lib/eval-config.nix") {
     system = "x86_64-linux";
-    modules = [ configuration diskoModule layout ];
+    modules = [ configuration diskoModule layout ] ++ extraModules;
   };
 in
 builder.lib.imagesFor {

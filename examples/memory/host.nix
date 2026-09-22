@@ -4,7 +4,9 @@
 #
 # The host has no install recipe and needs none: a squashfs store is written by the image
 # (law L6), so its installers are holes and the image itself is the deliverable.
-{ pkgs, builder }:
+# extraModules is empty for a real host; the suite threads its witness modules through it to
+# BOOT this very example (tests/e2e-example-memory.nix).
+{ pkgs, builder, extraModules ? [ ] }:
 
 let
   inherit (builder.lib.mk { inherit pkgs; }) modules;
@@ -27,7 +29,7 @@ let
       # store IS that partition, found by the label the image stamps (one source, so a
       # rename cannot silently leave the host without a root).
       (modules.readOnlyStore { })
-    ];
+    ] ++ extraModules;
   };
 in
 builder.lib.imagesFor {

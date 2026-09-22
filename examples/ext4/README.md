@@ -42,6 +42,28 @@ machine, and it is stated once — as the layout's `device`, which is also what 
 clears. Use a by-id name, never `/dev/sda`: a name that moves between boots is a name
 that can clear the wrong disk.
 
+## Reading the slot — the other half
+
+A host does not only PRODUCE a slot, it CONSUMES one, and `host.nix` shows both sides. Its
+configuration mounts the embedded slot by the partlabel that IS `slotName` — your own input,
+so there is nothing derived to guess:
+
+    fileSystems."/run/secrets" = {
+      device = "/dev/disk/by-partlabel/${slotName}";
+      fsType = "vfat";
+      options = [ "ro" "nofail" ];
+    };
+
+Deliver by SIDECAR instead (a separate medium) and the label is name-DERIVED, not `slotName`.
+You still never pass it in or read it back off the artifact — you derive it, with no build,
+from the SAME function the builder stamps the medium with:
+
+    device = "/dev/disk/by-label/${builder.lib.labels.secretsIsoLabel "example-ext4"}";
+
+A host that guessed a label the medium does not carry would fail to mount. `e2e-example-ext4`
+boots THIS example — the witness modules threaded through its `extraModules` seam — and
+asserts the mount comes up, so the consumer half is proven, not just shown.
+
 ## What it gets
 
 Every endpoint exists for this host — no law removes any:

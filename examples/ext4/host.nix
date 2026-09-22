@@ -9,7 +9,9 @@
 #
 # See README.md for where each value comes from, and ../../lib/host-record.nix for the
 # record this fills in.
-{ pkgs, builder, diskoModule }:
+# extraModules is empty for a real host; the suite passes its witness modules through it to
+# BOOT this very example (tests/e2e-example-ext4.nix), so what you copy is what is proven.
+{ pkgs, builder, diskoModule, extraModules ? [ ] }:
 
 let
   slotName = "secrets";
@@ -18,13 +20,31 @@ let
   # boots is a name that can clear the wrong disk.
   device = "/dev/disk/by-id/virtio-main";
 
-  configuration = { modulesPath, ... }: {
+  configuration = { config, modulesPath, ... }: {
     imports = [ (modulesPath + "/profiles/qemu-guest.nix") ];
     system.stateVersion = "26.05";
     boot.loader.grub.enable = false;
+    boot.loader.systemd-boot.enable = true;
     boot.kernelParams = [ "console=ttyS0" ];
     networking.hostName = "example-ext4";
     users.allowNoPasswordLogin = true;
+
+    # CONSUME your own secrets. The embedded slot is a vfat partition IN the image, found by
+    # its partlabel = slotName — your input, one source, nothing derived to guess. `nofail`
+    # so a host whose slot is not filled yet (phase 2 fills it) still boots.
+    fileSystems."/run/secrets" = {
+      device = "/dev/disk/by-partlabel/${slotName}";
+      fsType = "vfat";
+      options = [ "ro" "nofail" ];
+    };
+    # Delivering by SIDECAR instead (a separate medium)? Its iso9660 label is name-DERIVED, so
+    # mount by exactly what you derive — the SAME function the builder stamps with, never a
+    # hardcoded string, and available with no build (a hash of the name):
+    #   fileSystems."/run/secrets" = {
+    #     device = "/dev/disk/by-label/${builder.lib.labels.secretsIsoLabel config.networking.hostName}";
+    #     fsType = "iso9660";
+    #     options = [ "ro" "nofail" ];
+    #   };
   };
 
   # GPT on that disk: an ESP at /boot, a vfat slot partition named slotName, an ext4 root
@@ -38,7 +58,7 @@ let
 
   host = import (pkgs.path + "/nixos/lib/eval-config.nix") {
     system = "x86_64-linux";
-    modules = [ configuration diskoModule layout ];
+    modules = [ configuration diskoModule layout ] ++ extraModules;
   };
 in
 builder.lib.imagesFor {

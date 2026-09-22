@@ -78,6 +78,12 @@ rec {
     inherit (ids) secretsVolumeId secretsIsoLabel secretsVfatLabel slotVolumeId;
   };
 
+  # The fixed partition labels the ASSEMBLY path stamps (esp, store). A disko-owned disk labels
+  # its own partitions from the layout, so those never come from here; this is the one constant
+  # for a host that mounts an assembled partition by hand, instead of a second "ESP"/"nixos"
+  # literal that drifts from what the image wrote.
+  inherit (import ../tools/constants.nix) diskLabels;
+
   # The disk layout template: a disko layout for a host that must own a disk but has
   # nothing particular to say about it. Imported in the host's OWN configuration (next to
   # disko's module, which the host brings), so every choice in it is visible there and

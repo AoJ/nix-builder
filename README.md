@@ -88,6 +88,22 @@ inside the slot, never on the host's own filesystem; where the host mounts its s
 what reads it is the host's business. An `-install` artifact carries the same slot and
 fills the target's on the way through.
 
+**Phase 2 fills the slot in place, into a copy, or onto a stream** — an optional second
+argument to the runner. Omitted, it patches the artifact you hand it. Given a path, or `-`
+for stdout, it leaves the input untouched and emits a filled artifact instead: the bytes
+before the slot, the filled slot, the bytes after — the slot's window substituted in a
+byte-precise stream, never rebuilding the image, with only slot-sized bytes of secret in
+memory. So a build server can fill a slot and send the result straight to a hypervisor
+without the secret-bearing artifact ever touching its disk:
+
+    # build the secret-free image once (cacheable, shareable), then stream the fill onward
+    nix build .#image-iso
+    nix run   .#image-personalize-iso -- ./result - | ssh hypervisor 'cat > host.iso'
+
+The convention is one argument on the runner, identical whether it is a flake app or
+`getExe`'d in a deploy derivation; the offset and size are read out of the artifact, so a
+wrong offset is refused, never silently written.
+
 Every host gets the same endpoint set; combinations a law forbids are still present, as
 artifacts that fail to BUILD with their law (an **encrypted** zfs host's `image-raw`, a
 squashfs host's installers) — `nix flake show` lists them, `nix build` on one tells you which

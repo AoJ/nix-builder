@@ -24,6 +24,7 @@ let
     zfs-inmemory-install = import ./e2e-zfs-inmemory-install.nix { inherit pkgs compose hosts; };
     memory-boot = import ./e2e-memory-boot.nix { inherit pkgs compose hosts; };
     personalize-boot = import ./e2e-personalize-boot.nix { inherit pkgs compose hosts; };
+    personalize-stream = import ./e2e-personalize-stream.nix { inherit pkgs compose hosts; };
     live-iso = import ./e2e-live-iso.nix { inherit pkgs compose hosts; };
     kexec-boot = import ./e2e-kexec-boot.nix { inherit pkgs compose hosts; };
     install-cycle = import ./e2e-install-cycle.nix { inherit pkgs compose hosts; };

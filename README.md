@@ -117,6 +117,22 @@ by exactly what was written instead of guessing: `endpoints.image-secrets-iso.la
 `.volumeId`, `endpoints.image-iso.label` (the iso9660 volume id), and the vfat sidecar's
 fixed `SECRETS` label with its `.volumeId` serial.
 
+But a host CONFIGURATION needs the label BEFORE any of that exists — it goes into
+nix-builder, and only then would the artifact carry a label. So the label is not passed in
+(a second source of truth) nor waited for: it is a pure function of the host's name, and
+`lib.labels` exposes exactly the function the blocks stamp with, so a config derives ahead of
+the build precisely what the medium will carry:
+
+    # mount the iso secrets sidecar the running host will be handed
+    fileSystems."/run/secrets" = {
+      device = "/dev/disk/by-label/${builder.lib.labels.secretsIsoLabel "myhost"}";
+      fsType = "iso9660";
+    };
+
+`test-sidecar-identity` pins that what `lib.labels` derives equals what `blkid` reads off the
+built medium, and `e2e-sidecar-iso` boots a host that mounts by exactly this derived label —
+the consumer path, not just the producer's stamp.
+
 The API:
 
 - `lib.imagesFor { pkgs; host; slotName; secrets ? …; install ? …; }` — the front door.
@@ -134,6 +150,11 @@ The API:
   its passphrase from it).
 - `lib.paths.installSlot` — where the install action lays the slot out while it runs, for a
   host's own storage scripts to read (a pool passphrase, say).
+- `lib.labels` — the volume identities a host must know AHEAD of the build to mount by, each a
+  pure function of the host's name (no `pkgs`): `secretsIsoLabel name` (the iso sidecar's
+  by-label handle), `secretsVolumeId name` (the vfat serial / by-uuid), `secretsVfatLabel`
+  (the fixed `SECRETS`), `slotVolumeId name`. The blocks stamp with these same functions, so
+  a config and the artifact cannot drift.
 - `lib.mk { pkgs }` → `tools`, `compose`, `modules` (`liveNetboot`, `liveIso label`,
   `readOnlyStore { device ? … }` — the host-side modules a memory-rooted host needs; the
   appliance's own store partition is the default, so it need not restate it), plus

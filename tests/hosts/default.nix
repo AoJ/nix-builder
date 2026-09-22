@@ -81,7 +81,7 @@ let
       runtime = evalHost system ([
         ./modules/base.nix
         (import ./modules/e2e-result.nix { inherit record; })
-        (import ./modules/marker.nix { inherit record; })
+        (import ./modules/marker.nix { inherit record; sidecarIsoLabel = tools.ids.secretsIsoLabel name; })
         { networking.hostName = name; }
       ] ++ modules);
       # A disko host's install script IS disko's own create script, so the same layout that

@@ -7,7 +7,7 @@
 # says where it EXPECTS the key, so if the image ever puts the slot somewhere else the boot
 # stops finding it and the e2e goes red. A marker that derived the path from slot-face would
 # only ever agree with itself.
-{ record }:
+{ record, sidecarIsoLabel ? null }:
 { pkgs, ... }:
 {
   systemd.services.e2e-marker = {
@@ -61,6 +61,24 @@
           fi
         fi
       fi
+      ${pkgs.lib.optionalString (sidecarIsoLabel != null) ''
+        # The iso sidecar's label is DERIVED, not the constant SECRETS, so it CANNOT be a
+        # restated literal here — it is threaded in from the same ids function a host config
+        # uses (builder.lib.labels.secretsIsoLabel), and test-sidecar-identity is where that
+        # value is pinned to what the medium actually carries. This proves the derive-mount
+        # chain a host walks, which no literal ever exercised.
+        side_iso=/dev/disk/by-label/${sidecarIsoLabel}
+        if [ -e "$side_iso" ]; then
+          mkdir -p /run/sidecar-iso
+          if mount -o ro "$side_iso" /run/sidecar-iso 2>/dev/null; then
+            if [ -s /run/sidecar-iso/sops.age ]; then
+              e2e-record "E2E-SIDECAR-ISO $(age-keygen -y /run/sidecar-iso/sops.age)"
+            else
+              e2e-record "E2E-SIDECAR-ISO-EMPTY"
+            fi
+          fi
+        fi
+      ''}
       systemctl poweroff --no-block
     '';
   };

@@ -69,6 +69,15 @@ rec {
     inherit (import ../tools/constants.nix) installSlot;
   };
 
+  # The identity a host must know AHEAD of the build to mount by: a secrets sidecar's label,
+  # a slot's volume id. Pure functions of the host's name — the SAME ones the blocks stamp
+  # the media with — so a host configuration derives EXACTLY what the artifact will carry and
+  # the two cannot drift. No pkgs: it is a hash of a name.
+  #   fileSystems."/secrets".device = "/dev/disk/by-label/${builder.lib.labels.secretsIsoLabel name}";
+  labels = let ids = import ../tools/ids.nix; in {
+    inherit (ids) secretsVolumeId secretsIsoLabel secretsVfatLabel slotVolumeId;
+  };
+
   # The disk layout template: a disko layout for a host that must own a disk but has
   # nothing particular to say about it. Imported in the host's OWN configuration (next to
   # disko's module, which the host brings), so every choice in it is visible there and

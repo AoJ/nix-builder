@@ -203,7 +203,7 @@ in
         # meaningful fs label here would collide with the sidecar's on any machine carrying
         # both — measured, udev's by-label picked the empty slot over the sidecar.
         label = "SLOT";
-        volumeId = tools.ids.volumeId "${config.name}:slot";
+        volumeId = tools.ids.slotVolumeId config.name;
         sizeMiB = config.slot.sizeMiB;
       };
 

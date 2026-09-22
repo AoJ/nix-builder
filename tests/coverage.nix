@@ -62,7 +62,7 @@ let
       image-raw-install-inmemory = "eval-only";
       image-qcow2-install-inmemory = "eval-only";
       image-secrets-vfat = "booted";
-      image-secrets-iso = "eval-only";
+      image-secrets-iso = "booted";
       image-secrets-json = "eval-only";
       image-personalize = "booted";
       image-personalize-iso = "booted";

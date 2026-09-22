@@ -67,7 +67,7 @@ in
     let
       manifest = tools.secretManifest { inherit (config) name files; };
 
-      volumeId = tools.ids.volumeId "${config.name}:sidecar";
+      volumeId = tools.ids.secretsVolumeId config.name;
 
       runner = script: vars: runtimeInputs: tools.bashTool {
         name = "sidecar-${config.name}";
@@ -87,7 +87,7 @@ in
         '' [ pkgs.coreutils ];
 
         iso = runner ./sidecar-iso.sh ''
-          volume_id=${lib.escapeShellArg (lib.toUpper volumeId)}
+          volume_id=${lib.escapeShellArg isoVolid}
           manifest=${manifest}
         '' [ pkgs.coreutils pkgs.xorriso ];
 
@@ -99,8 +99,8 @@ in
       # the runners above, read back here so a consumer mounts by exactly what was written.
       # vfat carries the fixed SECRETS label and the id as its FAT serial; iso's volume id
       # IS its label (uppercased, iso9660 has no separate serial); json is a file.
-      isoVolid = lib.toUpper volumeId;
-      label = { vfat = "SECRETS"; iso = isoVolid; json = null; }.${config.sidecarFormat};
+      isoVolid = tools.ids.secretsIsoLabel config.name;
+      label = { vfat = tools.ids.secretsVfatLabel; iso = isoVolid; json = null; }.${config.sidecarFormat};
       volId = { vfat = volumeId; iso = isoVolid; json = null; }.${config.sidecarFormat};
     in
     {

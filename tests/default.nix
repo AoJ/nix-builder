@@ -61,3 +61,12 @@ in
   name = "e2e-${n}";
   value = e2e.${n}.check;
 }) (builtins.attrNames e2e))
+# A hole is a law-forbidden (host, endpoint) pair: the endpoint EXISTS but its artifact is
+# a derivation that fails to build with the law. run-all builds every `hole-*` expecting
+# that failure — the direct test of what a consumer hits building a forbidden pair.
+// builtins.listToAttrs (builtins.concatMap (h:
+  map (n: {
+    name = "hole-${h}-${n}";
+    value = (compose hosts.${h}).${n}.file;
+  }) coverage.lawHoles.${h})
+  (builtins.attrNames coverage.lawHoles))

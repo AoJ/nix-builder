@@ -13,14 +13,14 @@
       system = "x86_64-linux";
       pkgs = import nixpkgs { inherit system; };
       endpoints = import ./host.nix { inherit pkgs builder; };
-      # The SAME uniform split. A squashfs appliance's INSTALLERS are holes (L6 — the image
-      # writes that store, so there is nothing to install), present in holes with the law;
-      # the runtime images (raw/iso/kexec) are its deliverables — the image IS the update.
+      # The SAME uniform split. A squashfs appliance's INSTALLERS are law-forbidden (L6 — the
+      # image writes that store, so there is nothing to install): they are STILL in packages
+      # but fail to build with the L6 message; the runtime images (raw/iso/kexec) are its
+      # deliverables — the image IS the update.
       d = builder.lib.deliverables { inherit pkgs endpoints; };
     in
     {
       packages.${system} = d.packages;
       apps.${system} = d.apps;
-      holes.${system} = d.holes;
     };
 }

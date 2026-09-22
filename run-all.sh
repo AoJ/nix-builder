@@ -63,7 +63,7 @@ discover() {
   timeout "$eval_timeout" nix eval --raw -f "$file" --apply '
     v: let set = if builtins.isFunction v then v { } else v;
     in builtins.concatStringsSep "\n" (builtins.filter
-      (n: builtins.match "(test|e2e)-.*" n != null)
+      (n: builtins.match "(test|e2e|hole)-.*" n != null)
       (builtins.attrNames set))'
 }
 
@@ -100,14 +100,27 @@ for t in "${targets[@]}"; do
   attr=${t#*:}
   budget="$eval_timeout"
   jobs=()
+  expect_fail=0
   case "$attr" in
     e2e-*) budget="$e2e_timeout"; jobs=(--max-jobs 1 --cores 2) ;;
+    # A hole is a law-forbidden endpoint: its artifact MUST fail to build, with its law.
+    hole-*) expect_fail=1 ;;
   esac
   echo "== $t $(date +%H:%M:%S)"
   sc=0
   timeout "$budget" nix build --no-link -f "$dir" "$attr" "${jobs[@]}" \
     > "$logdir/$attr.log" 2>&1 || sc=$?
-  if [ "$sc" = 0 ]; then
+  if [ "$expect_fail" = 1 ]; then
+    # Pass ONLY on a genuine refusal: a nonzero that is not the timeout (124), and the log
+    # carries our law message — a hole that builds, times out, or fails unrelatedly is broken.
+    if [ "$sc" != 0 ] && [ "$sc" != 124 ] && grep -q "unsupported (" "$logdir/$attr.log"; then
+      pass+=("$t")
+    else
+      fail+=("$t")
+      echo "FAIL $t (hole did not refuse with its law; exit $sc) — log: $logdir/$attr.log"
+      tail -n 20 "$logdir/$attr.log"
+    fi
+  elif [ "$sc" = 0 ]; then
     pass+=("$t")
   else
     fail+=("$t")

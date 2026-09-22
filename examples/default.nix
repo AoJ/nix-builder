@@ -27,10 +27,10 @@ let
   };
 
   # No per-host list of endpoints any more — that was the very thing this repo exists to
-  # kill. Each host exposes the WHOLE set; the gate forces every non-hole endpoint to a .drv
-  # (nothing built) and asserts every hole carries its law as DATA. And it asserts every
-  # example exposes the SAME set of names — a host whose set drifts from the others fails
-  # here, not silently in someone's flake.
+  # kill. Each host exposes the WHOLE set; the gate forces every endpoint to a .drv (nothing
+  # built) — a law-forbidden pair is a real derivation that only FAILS when built, so it
+  # forces here like any other. And it asserts every example exposes the SAME set of names —
+  # a host whose set drifts from the others fails here, not silently in someone's flake.
   canonical = lib.sort lib.lessThan (builtins.attrNames (builtins.head (builtins.attrValues examples)));
 
   drvOf = e:
@@ -42,16 +42,12 @@ let
   gate = name: endpoints:
     let
       names = lib.sort lib.lessThan (builtins.attrNames endpoints);
-      holes = lib.filterAttrs (_: e: e ? hole) endpoints;
-      buildable = lib.filterAttrs (_: e: !(e ? hole)) endpoints;
-      forced = lib.mapAttrsToList (n: e: "${name}.${n} ${drvOf e}") buildable;
-      # A hole is data: read its law and replacement, never force its .file.
-      holed = lib.mapAttrsToList (n: e: "${name}.${n} hole:${e.hole.law} -> ${e.hole.replacement}") holes;
+      forced = lib.mapAttrsToList (n: e: "${name}.${n} ${drvOf e}") endpoints;
     in
     assert lib.assertMsg (names == canonical)
       "${name}: endpoint set drifts from the others: ${builtins.toJSON names}";
     pkgs.writeText "test-example-${name}"
-      (lib.concatStringsSep "\n" (forced ++ holed));
+      (lib.concatStringsSep "\n" forced);
 in
 
 examples

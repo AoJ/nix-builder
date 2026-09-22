@@ -29,6 +29,5 @@
     {
       packages.${system} = d.packages;
       apps.${system} = d.apps;
-      holes.${system} = d.holes;
     };
 }

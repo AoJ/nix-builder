@@ -64,8 +64,14 @@ let
 
   e = compose host;
 
+  # A genuine misconfiguration throws at EVAL (a delivery nobody produces, say).
   refusedEndpoint = h: n:
     !(builtins.tryEval (compose h).${n}.file.outPath).success;
+
+  # A law-forbidden pair is not an eval throw — it is a real derivation that fails to BUILD.
+  # At eval it is recognisable as the composer's `unsupported` stub by its name; the actual
+  # build failure is asserted by the `hole-*` targets (eval cannot see a build failure).
+  isHole = h: n: lib.hasInfix "-unsupported" (compose h).${n}.file.name;
 
   zfsHost = host // {
     variants = host.variants // {
@@ -91,23 +97,23 @@ assert lib.assertMsg (e.closure-live == e.image-iso.toplevel)
   "#closure-live is a LOOKUP of what image packed, not a second evaluation";
 assert lib.assertMsg (e.closure == host.variants.runtime.toplevel)
   "#closure is the host as it runs, named";
-assert lib.assertMsg (refusedEndpoint zfsHost "image-raw")
-  "L2: #image-raw for a zfs host is a hole the composer names at eval";
-assert lib.assertMsg (!refusedEndpoint zfsHost "image-raw-install")
+assert lib.assertMsg (isHole zfsHost "image-raw")
+  "L2: #image-raw for a no-layout zfs host is the unsupported stub — it fails at build, not eval";
+assert lib.assertMsg (!isHole zfsHost "image-raw-install")
   "L2 costs nothing on the -install half: the installer's store is the wrapper's own";
 assert lib.assertMsg (refusedEndpoint unproduced "image-raw")
   "a delivery nobody produces must fail at eval";
-assert lib.assertMsg (!refusedEndpoint host "image-kexec-install")
-  "the memory-rooted installer exists: the kexec wrapper evaluates";
-assert lib.assertMsg (!refusedEndpoint host "image-iso-install")
-  "the iso-rooted installer exists: the iso wrapper evaluates";
-assert lib.assertMsg (!refusedEndpoint host "image-raw-install-inmemory")
-  "the memory-rooted disk wrapper exists: -install-inmemory evaluates";
-assert lib.assertMsg (refusedEndpoint squashfsHost "image-raw-install")
-  "L6: a squashfs host's install endpoints are holes the composer names at eval";
-assert lib.assertMsg (refusedEndpoint squashfsHost "image-raw-install-inmemory")
+assert lib.assertMsg (!isHole host "image-kexec-install")
+  "the memory-rooted installer exists: the kexec wrapper is a real image, not the stub";
+assert lib.assertMsg (!isHole host "image-iso-install")
+  "the iso-rooted installer exists: the iso wrapper is a real image, not the stub";
+assert lib.assertMsg (!isHole host "image-raw-install-inmemory")
+  "the memory-rooted disk wrapper exists: -install-inmemory is a real image, not the stub";
+assert lib.assertMsg (isHole squashfsHost "image-raw-install")
+  "L6: a squashfs host's install endpoints are the unsupported stub — they fail at build";
+assert lib.assertMsg (isHole squashfsHost "image-raw-install-inmemory")
   "L6 covers the inmemory wrapper the same way";
-assert lib.assertMsg (!refusedEndpoint squashfsHost "image-raw")
+assert lib.assertMsg (!isHole squashfsHost "image-raw")
   "L6 costs nothing on the runtime half: the squashfs host's image is the deliverable";
 
 pkgs.runCommand "test-compose"

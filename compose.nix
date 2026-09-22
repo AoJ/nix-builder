@@ -51,39 +51,40 @@ let
     storePaths = [ v.toplevel ];
   };
 
-  # A hole is DATA, not a throw: every host exposes the whole endpoint set, and a
-  # combination a law forbids is a marker a consumer can SEE and filter by (`? hole`),
-  # never a name that vanishes or a flake-show that crashes. `.file` still throws with the
-  # law, so anyone who builds a hole outright is told why — a misconfigured (non-hole)
-  # endpoint throws its own error and is NOT filtered, so it stays loud.
-  mkHole = { law, reason, replacement }: {
-    hole = { inherit law reason replacement; };
-    file = throw "unsupported (${law}): ${reason} — use ${replacement}";
+  # A law forbids some (storage, format) pairs. The endpoint still EXISTS — every host
+  # exposes the whole set — but its artifact is a derivation that FAILS TO BUILD, printing
+  # which law and what to use instead. No eval-time throw: a throw would crash `nix flake
+  # show` and vanish the name; a failing build lets the set stay whole and complete, and
+  # tells anyone who builds a forbidden pair exactly why.
+  unsupported = { law, reason, replacement }: {
+    file = pkgs.runCommand "${host.name}-unsupported" { } ''
+      echo 'unsupported (${law}): ${reason} — use ${replacement}' >&2
+      exit 1
+    '';
   };
 
   storage = host.variants.runtime.storage;
   encrypted = host.install.encrypted or false;
   hasLayout = (host.layout or null) != null;
   diskImageFormats = [ "raw" "qcow2" ];
-  installSuffixes = [ "-install" "-install-inmemory" ];
 
-  # The hole a (format, endpoint-kind) pair is, from the host's DATA — no forcing, so
-  # iterating the set and asking `? hole` is cheap and total.
+  # Whether a (format, endpoint-kind) pair is law-forbidden, from the host's DATA — returns
+  # the failing endpoint to splice in, or null when the pair is real.
   holeFor = { format, install ? false, inmemory ? false }:
     let isDiskImage = builtins.elem format diskImageFormats;
     in
     if storage == "squashfs" && (install || inmemory)
-    then mkHole {
+    then unsupported {
       law = "L6"; replacement = "#image-${format}";
       reason = "a squashfs store is written by the image, never by an install";
     }
     else if storage == "zfs" && isDiskImage && !install && !inmemory && encrypted
-    then mkHole {
+    then unsupported {
       law = "L3"; replacement = "#image-${format}-install";
       reason = "an encrypted pool cannot be created from store-public data";
     }
     else if storage == "zfs" && isDiskImage && !install && !inmemory && !hasLayout
-    then mkHole {
+    then unsupported {
       law = "L2"; replacement = "#image-${format}-install";
       reason = "a zfs disk image is formatted from the host's disko layout, and none was declared";
     }

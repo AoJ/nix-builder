@@ -20,15 +20,14 @@
         inherit pkgs builder;
         diskoModule = disko.nixosModules.disko;
       };
-      # The SAME uniform split. This host's runtime disk images are HOLES (L3 — no image is
-      # ever encrypted), so image-raw/image-qcow2 are absent from packages and present in
-      # holes with the law; its deliverables are the installers.
+      # The SAME uniform split. This host's runtime disk images are law-forbidden (L3 — no
+      # image is ever encrypted), so image-raw/image-qcow2 are STILL in packages but fail to
+      # build with the L3 message (`nix build .#image-raw` tells you to use image-raw-install);
+      # its real deliverables are the installers.
       d = builder.lib.deliverables { inherit pkgs endpoints; };
     in
     {
       packages.${system} = d.packages;
       apps.${system} = d.apps;
-      # nix eval .#holes.x86_64-linux --json  -> { image-raw = { law = "L3"; … }; … }
-      holes.${system} = d.holes;
     };
 }

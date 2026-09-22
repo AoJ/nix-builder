@@ -24,23 +24,18 @@
         diskoModule = disko.nixosModules.disko;
       };
       # The endpoint set turned into flake outputs UNIFORMLY — this host lists nothing by
-      # hand. EVERY host exposes the same split, so `nix flake show` gives the whole set and
-      # the differences show up as holes, not as names that come and go.
+      # hand. EVERY host exposes the same split, so `nix flake show` gives the whole set.
+      # A pair a law forbids is still THERE, as a package that fails to build with the law
+      # (a disk/ext4 host forbids none); it never vanishes and never crashes flake show.
       d = builder.lib.deliverables { inherit pkgs endpoints; };
     in
     {
-      # The buildable images under their own names — image-raw, image-qcow2, image-iso,
+      # The images under their own names — image-raw, image-qcow2, image-iso,
       # image-kexec-install, … A secret in a derivation is a secret in the store, so
       # phase 2 and the sidecars are RUNNERS in `apps`, not packages:
       #   nix build .#image-raw
       #   nix run   .#image-personalize -- ./result
       packages.${system} = d.packages;
       apps.${system} = d.apps;
-
-      # What this host CANNOT produce, as DATA — the law and the endpoint to use instead —
-      # never a crash. A disk/ext4 host has none; a zfs or squashfs host does:
-      #   nix eval .#holes.x86_64-linux --json
-      #   endpoints.image-raw.label / .volumeId  — mount a finished artifact by what it carries
-      holes.${system} = d.holes;
     };
 }

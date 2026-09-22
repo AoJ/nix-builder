@@ -76,7 +76,7 @@ DECIDED (aoj):
   an x86 box with no binfmt), sets the target's hostid before `zpool create` so first boot imports
   without `-f`, and injects the closure without executing one target-arch binary. So `#image-raw`
   / `#image-qcow2` for an unencrypted zfs host WITH a disko layout are real endpoints; a zfs host
-  with no layout keeps the hole (refused at eval, named), and the encrypted pool is L3's.
+  with no layout keeps the hole (a named artifact that fails to build), and the encrypted pool is L3's.
 - **L3 — encryption is a property of the storage layout, and the encrypted pool is install-only.**
   No `#image-*` is ever encrypted. Correctness, not tidiness: a pool created with a store-visible
   placeholder passphrase is compromised for its whole life — `zfs change-key` rewrites neither the
@@ -125,14 +125,16 @@ instead of hidden in a flag.
 **Every host exposes the whole set, and every endpoint is under test** — an endpoint that exists
 only for the host that needs it is an endpoint nobody notices breaking.
 
-**A law-forbidden combination is a hole, and a hole is DATA, not a throw.** The endpoint is
-present and carries `{ hole = { law; reason; replacement; }; }`; its `.file` throws the law if
-someone builds it outright, but a consumer reads `? hole` to filter it (without forcing) and
-`.hole` to learn why and what to use instead. This is the difference between a hole and a bug: a
-MISCONFIGURED endpoint throws its own error when forced, so it is NOT filtered and stays loud —
-where a blanket `tryEval` would have swallowed both. So a host's flake exposes the WHOLE set
-uniformly (`builder.lib.deliverables` splits it into `packages` / `apps` / `holes`); nothing is
-hand-listed per host, and `nix flake show` never crashes on a hole.
+**A law-forbidden combination is a hole, and a hole fails at BUILD, not at eval.** The endpoint
+is present like any other; its `.file` is a real derivation that fails to build, printing which
+law and what to use instead. It is never an eval-time throw: a throw would crash `nix flake show`
+and make the name vanish, exactly the per-host divergence this repo exists to kill. So the set
+stays whole and identical for every host, `nix flake show` lists all of it, and building a
+forbidden pair is the only thing that fails — loudly, with its law. A host's flake exposes the
+set uniformly (`builder.lib.deliverables` splits it by KIND — images to `packages`, runners to
+`apps` — never by whether a pair is allowed); nothing is hand-listed or filtered per host. Each
+hole is a `hole-<host>-<endpoint>` target the suite BUILDS and asserts fails with its law —
+`builtins.tryEval` sees eval throws, never build failures, so the proof has to be a real build.
 
 ### The two layers — DECIDED
 
@@ -168,7 +170,7 @@ layout-less ext4. No target-arch code executes on any image path.
 | disk / ext4 | yes (L1) | yes | yes (L4) | yes |
 | disk / zfs | yes (L1) | yes — format-VM (unencrypted + layout; encrypted is **L3**, no-layout refuses) | yes (L4) | yes |
 
-Every hole is a law, not a per-host switch, and a marker a consumer can read, not a crash: it is
+Every hole is a law, not a per-host switch, and a failed build, not a crash: it is
 a property of `runtime.storage` (and, for the zfs runtime images, of `install.encrypted`), reads
 the same for every host that has one, and
 names its own replacement.
@@ -732,7 +734,8 @@ the design, not the test author's taste.
 - **Forcing a name is never read as "works": the coverage TABLE says which is which.** Every
   (host, endpoint) pair carries exactly one declared status — `booted`, `hole`, `eval-only` —
   and the suite fails when the table is incomplete against the endpoint set, when
-  a declared hole does not refuse, or when the holes drift from the laws. "It only evaluates" is
+  a declared hole's `hole-*` target does not fail to build with its law, or when the holes drift
+  from the laws. "It only evaluates" is
   a visible name someone wrote down, never a default the suite hands out. Every `booted` must be
   claimed by an e2e's own witness declaration, asserted as set equality — the table cannot drift
   from what the suite proves in either direction.

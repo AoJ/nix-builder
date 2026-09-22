@@ -88,9 +88,10 @@ inside the slot, never on the host's own filesystem; where the host mounts its s
 what reads it is the host's business. An `-install` artifact carries the same slot and
 fills the target's on the way through.
 
-Every host gets the same endpoint set; combinations a law forbids are named holes that
-refuse at eval (an **encrypted** zfs host's `image-raw`, a squashfs host's installers),
-never endpoints that quietly mean something else. An unencrypted zfs host DOES get its
+Every host gets the same endpoint set; combinations a law forbids are still present, as
+artifacts that fail to BUILD with their law (an **encrypted** zfs host's `image-raw`, a
+squashfs host's installers) — `nix flake show` lists them, `nix build` on one tells you which
+law and what to use instead, and nothing quietly means something else or vanishes per host. An unencrypted zfs host DOES get its
 runtime disk images: the pool is a kernel object, so a VM on the runner's own architecture
 (never emulation) makes it from the host's disko layout and the closure is injected as data
 — an aarch64 image builds on an x86 box with no target-arch code.

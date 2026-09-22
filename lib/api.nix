@@ -44,19 +44,18 @@ rec {
     (mk { inherit pkgs; }).recordFor (removeAttrs args [ "pkgs" ]);
 
   # Turn the endpoint set into flake outputs UNIFORMLY — no host hand-lists which endpoints
-  # it has. Every host runs the same split: the buildable images become `packages`, the
-  # runners become `apps`, and the law-forbidden combinations become `holes` (DATA — name,
-  # law, and replacement) instead of vanishing or crashing `nix flake show`. A misconfigured
-  # (non-hole) endpoint is NOT filtered — it throws its own error when forced, and so stays
-  # loud instead of silently disappearing.
+  # it has, and NOTHING is filtered out. Every host runs the same split by KIND: the images
+  # become `packages` (a law-forbidden one among them is a derivation that fails to build
+  # with its law — present in the set, listed by `nix flake show`, refused only when built),
+  # the runners become `apps`. Splitting by kind, never by whether a pair is allowed, is
+  # what keeps every host's set identical and a wrong build loud instead of a missing name.
   deliverables = { pkgs, endpoints }:
     let inherit (pkgs) lib; in
     {
       packages = lib.mapAttrs (_: e: e.file)
-        (lib.filterAttrs (_: e: (e ? file) && !(e ? hole)) endpoints);
+        (lib.filterAttrs (_: e: e ? file) endpoints);
       apps = lib.mapAttrs (_: e: { type = "app"; program = lib.getExe e.run; })
         (lib.filterAttrs (_: e: e ? run) endpoints);
-      holes = lib.mapAttrs (_: e: e.hole) (lib.filterAttrs (_: e: e ? hole) endpoints);
     };
 
   # Paths blocks OWNS and publishes, so a host reads them from here instead of hardcoding

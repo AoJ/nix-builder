@@ -3,12 +3,13 @@
 #
 #   booted     an e2e boots the artifact (or, for phase 2, runs it against one) and reads
 #              the witness off the running system
-#   hole       refused at eval by a law — asserted red, not skipped
+#   hole       forbidden by a law — its artifact fails to BUILD; the `hole-<h>-<n>` target
+#              builds it and asserts the refusal (eval cannot see a build failure)
 #   eval-only  forced to a .drv and NOTHING more; a named debt, not a proof
 #
-# Both halves are ENFORCED: holes must match the laws, and every `booted` must be claimed
-# by an e2e's own witness declaration — the same trick in both directions, so the table
-# cannot quietly drift from what the suite actually proves.
+# All three are ENFORCED: holes must match the laws (and each is a hole-* build target),
+# and every `booted` must be claimed by an e2e's own witness declaration — the same trick
+# in every direction, so the table cannot quietly drift from what the suite actually proves.
 { pkgs, witnessed }:
 
 let

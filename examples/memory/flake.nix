@@ -13,14 +13,14 @@
       system = "x86_64-linux";
       pkgs = import nixpkgs { inherit system; };
       endpoints = import ./host.nix { inherit pkgs builder; };
+      # The SAME uniform split. A squashfs appliance's INSTALLERS are holes (L6 — the image
+      # writes that store, so there is nothing to install), present in holes with the law;
+      # the runtime images (raw/iso/kexec) are its deliverables — the image IS the update.
+      d = builder.lib.deliverables { inherit pkgs endpoints; };
     in
     {
-      # The image IS the deliverable — this host has no installer at all (L6): write it
-      # to the device and boot. An update ships a new image, not an install.
-      packages.${system} = {
-        default = endpoints.image-raw.file;     # ESP + read-only store partition
-        netboot = endpoints.image-kexec.file;   # the same appliance over the network
-        iso = endpoints.image-iso.file;
-      };
+      packages.${system} = d.packages;
+      apps.${system} = d.apps;
+      holes.${system} = d.holes;
     };
 }

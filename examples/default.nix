@@ -26,29 +26,32 @@ let
     memory = import ./memory/host.nix { inherit pkgs builder; };
   };
 
-  # The endpoint names each example's flake.nix actually exposes — listed here so the gate
-  # proves those exist, and a copy-paste flake cannot promise a name the composer would
-  # refuse.
-  published = {
-    ext4 = [ "image-raw" "image-qcow2" "image-iso" "image-kexec-install"
-             "image-personalize" "image-secrets-vfat" "image-secrets-iso" ];
-    zfs = [ "image-raw" "image-qcow2" "image-iso" "image-kexec-install"
-            "image-raw-install" "image-raw-install-inmemory" "image-personalize"
-            "image-personalize-kexec" "image-secrets-iso" ];
-    zfs-encrypted = [ "image-kexec-install" "image-raw-install"
-                      "image-personalize-kexec" ];
-    memory = [ "image-raw" "image-kexec" "image-iso" ];
-  };
+  # No per-host list of endpoints any more — that was the very thing this repo exists to
+  # kill. Each host exposes the WHOLE set; the gate forces every non-hole endpoint to a .drv
+  # (nothing built) and asserts every hole carries its law as DATA. And it asserts every
+  # example exposes the SAME set of names — a host whose set drifts from the others fails
+  # here, not silently in someone's flake.
+  canonical = lib.sort lib.lessThan (builtins.attrNames (builtins.head (builtins.attrValues examples)));
 
-  drvOf = e: n:
+  drvOf = e:
     builtins.unsafeDiscardStringContext (
-      if lib.hasPrefix "image-personalize" n || lib.hasPrefix "image-secrets" n
-      then e.${n}.run.drvPath
-      else e.${n}.file.drvPath);
+      if e ? run then e.run.drvPath
+      else if e ? file then e.file.drvPath
+      else e.drvPath);  # closure / closure-live: the toplevel itself
 
   gate = name: endpoints:
+    let
+      names = lib.sort lib.lessThan (builtins.attrNames endpoints);
+      holes = lib.filterAttrs (_: e: e ? hole) endpoints;
+      buildable = lib.filterAttrs (_: e: !(e ? hole)) endpoints;
+      forced = lib.mapAttrsToList (n: e: "${name}.${n} ${drvOf e}") buildable;
+      # A hole is data: read its law and replacement, never force its .file.
+      holed = lib.mapAttrsToList (n: e: "${name}.${n} hole:${e.hole.law} -> ${e.hole.replacement}") holes;
+    in
+    assert lib.assertMsg (names == canonical)
+      "${name}: endpoint set drifts from the others: ${builtins.toJSON names}";
     pkgs.writeText "test-example-${name}"
-      (lib.concatMapStringsSep "\n" (n: "${name}.${n} ${drvOf endpoints n}") published.${name});
+      (lib.concatStringsSep "\n" (forced ++ holed));
 in
 
 examples

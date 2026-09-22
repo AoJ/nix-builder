@@ -51,14 +51,45 @@ let
     storePaths = [ v.toplevel ];
   };
 
-  # L2 as amended: an unencrypted pool is created by the format-VM from the host's disko
-  # layout; the ENCRYPTED pool stays the install's alone (L3) — every key the image build
-  # could use is store-public for life.
-  diskShape =
-    if host.variants.runtime.storage == "zfs" && (host.install.encrypted or false)
-    then throw ("unsupported (L3): an encrypted pool cannot be created from store-public"
-      + " data — use #image-<format>-install")
-    else host.variants.runtime.storage;
+  # A hole is DATA, not a throw: every host exposes the whole endpoint set, and a
+  # combination a law forbids is a marker a consumer can SEE and filter by (`? hole`),
+  # never a name that vanishes or a flake-show that crashes. `.file` still throws with the
+  # law, so anyone who builds a hole outright is told why — a misconfigured (non-hole)
+  # endpoint throws its own error and is NOT filtered, so it stays loud.
+  mkHole = { law, reason, replacement }: {
+    hole = { inherit law reason replacement; };
+    file = throw "unsupported (${law}): ${reason} — use ${replacement}";
+  };
+
+  storage = host.variants.runtime.storage;
+  encrypted = host.install.encrypted or false;
+  hasLayout = (host.layout or null) != null;
+  diskImageFormats = [ "raw" "qcow2" ];
+  installSuffixes = [ "-install" "-install-inmemory" ];
+
+  # The hole a (format, endpoint-kind) pair is, from the host's DATA — no forcing, so
+  # iterating the set and asking `? hole` is cheap and total.
+  holeFor = { format, install ? false, inmemory ? false }:
+    let isDiskImage = builtins.elem format diskImageFormats;
+    in
+    if storage == "squashfs" && (install || inmemory)
+    then mkHole {
+      law = "L6"; replacement = "#image-${format}";
+      reason = "a squashfs store is written by the image, never by an install";
+    }
+    else if storage == "zfs" && isDiskImage && !install && !inmemory && encrypted
+    then mkHole {
+      law = "L3"; replacement = "#image-${format}-install";
+      reason = "an encrypted pool cannot be created from store-public data";
+    }
+    else if storage == "zfs" && isDiskImage && !install && !inmemory && !hasLayout
+    then mkHole {
+      law = "L2"; replacement = "#image-${format}-install";
+      reason = "a zfs disk image is formatted from the host's disko layout, and none was declared";
+    }
+    else null;
+
+  diskShape = storage;
   storeShapeFor = format: {
     iso = "squashfs";
     kexec = "squashfs";
@@ -116,14 +147,17 @@ let
   runtimeEndpoints = lib.listToAttrs (map (f: rec {
     name = "image-${f}";
     value =
-      let v = variantFor f;
-      in imageFor f (storeShapeFor f) v.rootMode v "" (placementFor f) {
-        layout = host.layout or null;
-        hostId = host.hostId or null;
-        # The iso medium's label, derived ONCE here and handed to the block — the same
-        # string the runtime iso face mounts by.
-        mediumLabel = if f == "iso" then isoLabel else null;
-      };
+      let h = holeFor { format = f; };
+      in if h != null then h
+      else
+        let v = variantFor f;
+        in imageFor f (storeShapeFor f) v.rootMode v "" (placementFor f) {
+          layout = host.layout or null;
+          hostId = host.hostId or null;
+          # The iso medium's label, derived ONCE here and handed to the block — the same
+          # string the runtime iso face mounts by.
+          mediumLabel = if f == "iso" then isoLabel else null;
+        };
   }) formats);
 
   # What gets installed is ALWAYS the host as it runs; the format only shapes the wrapper.
@@ -192,17 +226,13 @@ let
     rawMemory = installerFor { rootMode = "memory"; faceFormat = "raw"; isoLabel = null; };
   };
 
-  # L6 mirrors L2: a squashfs store is written by the image, never by an install —
-  # nixos-install populates a filesystem, and a squashfs is generated from one.
-  guardL6 = f: v:
-    if host.variants.runtime.storage == "squashfs"
-    then throw ("unsupported (L6): a squashfs store is written by the image, never by an"
-      + " install — deploy #image-${f} itself")
-    else v;
+  # L6 mirrors L2 as a DATA hole: a squashfs store is written by the image, never by an
+  # install — nixos-install populates a filesystem, and a squashfs is generated from one.
+  withInstallHole = args: v: let h = holeFor args; in if h != null then h else v;
 
   installEndpoints = lib.listToAttrs (map (f: {
     name = "image-${f}-install";
-    value = guardL6 f (
+    value = withInstallHole { format = f; install = true; } (
       let
         installer =
           if f == "iso" then installers.iso
@@ -223,7 +253,7 @@ let
   # install a different disk.
   inmemoryInstallEndpoints = lib.listToAttrs (map (f: {
     name = "image-${f}-install-inmemory";
-    value = guardL6 f
+    value = withInstallHole { format = f; inmemory = true; }
       (imageFor f "squashfs" "memory" installers.rawMemory "-install-inmemory" "initrd" { });
   }) [ "raw" "qcow2" ]);
 

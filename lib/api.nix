@@ -43,6 +43,22 @@ rec {
   recordFor = { pkgs, ... }@args:
     (mk { inherit pkgs; }).recordFor (removeAttrs args [ "pkgs" ]);
 
+  # Turn the endpoint set into flake outputs UNIFORMLY — no host hand-lists which endpoints
+  # it has. Every host runs the same split: the buildable images become `packages`, the
+  # runners become `apps`, and the law-forbidden combinations become `holes` (DATA — name,
+  # law, and replacement) instead of vanishing or crashing `nix flake show`. A misconfigured
+  # (non-hole) endpoint is NOT filtered — it throws its own error when forced, and so stays
+  # loud instead of silently disappearing.
+  deliverables = { pkgs, endpoints }:
+    let inherit (pkgs) lib; in
+    {
+      packages = lib.mapAttrs (_: e: e.file)
+        (lib.filterAttrs (_: e: (e ? file) && !(e ? hole)) endpoints);
+      apps = lib.mapAttrs (_: e: { type = "app"; program = lib.getExe e.run; })
+        (lib.filterAttrs (_: e: e ? run) endpoints);
+      holes = lib.mapAttrs (_: e: e.hole) (lib.filterAttrs (_: e: e ? hole) endpoints);
+    };
+
   # Paths blocks OWNS and publishes, so a host reads them from here instead of hardcoding
   # a string both sides have to keep guessing right. They are ours, inside our own
   # environment — what happens on the host's own filesystem is the host's to name.

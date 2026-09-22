@@ -10,8 +10,6 @@
       url = "github:nix-community/disko";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    # Optional: run the builder on YOUR nixpkgs. Its suite's green is a statement about
-    # its own pin — at an overridden revision the proof is your own run of the suite.
     # builder.inputs.nixpkgs.follows = "nixpkgs";
   };
 
@@ -23,39 +21,14 @@
         inherit pkgs builder;
         diskoModule = disko.nixosModules.disko;
       };
+      # The SAME uniform split as every other host — nothing hand-listed. An unencrypted zfs
+      # host has real runtime images (the format-VM makes the pool from its disko layout),
+      # so image-raw/image-qcow2/image-iso appear in packages next to the installers.
+      d = builder.lib.deliverables { inherit pkgs endpoints; };
     in
     {
-      # An unencrypted zfs host now has runtime disk images too: the format-VM makes the
-      # pool from the same disko layout the install uses. The installers stay for a takeover.
-      packages.${system} = {
-        default = endpoints.image-raw.file;                    # bootable GPT disk, pool and all
-        qcow = endpoints.image-qcow2.file;                     # the same disk, cloud envelope
-        iso = endpoints.image-iso.file;                        # live medium: root in RAM
-        installer = endpoints.image-kexec-install.file;        # what a deploy kexecs
-        usb = endpoints.image-raw-install.file;                # stick -> a different disk
-        inmemory = endpoints.image-raw-install-inmemory.file;  # may install its own disk
-      };
-
-      # The sidecars hand back the identity a consumer mounts by — no guessing a generated
-      # volume id: `endpoints.image-secrets-iso.label` is the /dev/disk/by-label name, and
-      # `endpoints.image-iso.label` is the runtime medium's own volume id.
-
-      # Phase 2 fills a finished artifact's slot; the runner is OUTSIDE the store on purpose
-      # (a secret in a derivation is a secret in the store):
-      #   nix run .#personalize -- ./result
-      apps.${system} = {
-        personalize = {
-          type = "app";
-          program = pkgs.lib.getExe endpoints.image-personalize.run;
-        };
-        personalize-kexec = {
-          type = "app";
-          program = pkgs.lib.getExe endpoints.image-personalize-kexec.run;
-        };
-        secrets-sidecar-iso = {
-          type = "app";
-          program = pkgs.lib.getExe endpoints.image-secrets-iso.run;
-        };
-      };
+      packages.${system} = d.packages;
+      apps.${system} = d.apps;
+      holes.${system} = d.holes;
     };
 }

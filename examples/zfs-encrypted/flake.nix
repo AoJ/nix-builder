@@ -20,22 +20,15 @@
         inherit pkgs builder;
         diskoModule = disko.nixosModules.disko;
       };
+      # The SAME uniform split. This host's runtime disk images are HOLES (L3 — no image is
+      # ever encrypted), so image-raw/image-qcow2 are absent from packages and present in
+      # holes with the law; its deliverables are the installers.
+      d = builder.lib.deliverables { inherit pkgs endpoints; };
     in
     {
-      # An encrypted pool is created at install with the real passphrase (L3): no runtime
-      # image is ever encrypted, so this host's deliverables are its installers.
-      packages.${system} = {
-        default = endpoints.image-kexec-install.file;
-        usb = endpoints.image-raw-install.file;
-      };
-
-      # The artifact is inert until phase 2 puts the host key AND the pool passphrase in
-      # its slot; an installer started without the passphrase refuses before any wipe:
-      #   nix build .#default
-      #   nix run .#personalize-kexec -- ./result-tree
-      apps.${system}.personalize-kexec = {
-        type = "app";
-        program = pkgs.lib.getExe endpoints.image-personalize-kexec.run;
-      };
+      packages.${system} = d.packages;
+      apps.${system} = d.apps;
+      # nix eval .#holes.x86_64-linux --json  -> { image-raw = { law = "L3"; … }; … }
+      holes.${system} = d.holes;
     };
 }

@@ -23,41 +23,24 @@
         inherit pkgs builder;
         diskoModule = disko.nixosModules.disko;
       };
+      # The endpoint set turned into flake outputs UNIFORMLY — this host lists nothing by
+      # hand. EVERY host exposes the same split, so `nix flake show` gives the whole set and
+      # the differences show up as holes, not as names that come and go.
+      d = builder.lib.deliverables { inherit pkgs endpoints; };
     in
     {
-      packages.${system} = {
-        default = endpoints.image-raw.file;    # bootable GPT disk image
-        qcow = endpoints.image-qcow2.file;     # the same disk in a cloud envelope
-        iso = endpoints.image-iso.file;        # live medium: root in RAM
-        installer = endpoints.image-kexec-install.file;  # what a deploy kexecs
-      };
+      # The buildable images under their own names — image-raw, image-qcow2, image-iso,
+      # image-kexec-install, … A secret in a derivation is a secret in the store, so
+      # phase 2 and the sidecars are RUNNERS in `apps`, not packages:
+      #   nix build .#image-raw
+      #   nix run   .#image-personalize -- ./result
+      packages.${system} = d.packages;
+      apps.${system} = d.apps;
 
-      # Each disk endpoint and sidecar hands back the volume identity it was stamped with,
-      # so a consumer mounts by exactly what was written — no guessing a generated id:
-      #   endpoints.image-secrets-vfat.label     # "SECRETS"  (mount -L SECRETS)
-      #   endpoints.image-secrets-vfat.volumeId  # the FAT serial, for /dev/disk/by-uuid
-      #   endpoints.image-secrets-iso.label      # the iso9660 volume id (by-label)
-      #   endpoints.image-iso.label              # the live medium's own volume id
-      # These are plain strings; read them wherever your deploy mounts the artifact.
-
-      # Phase 2 and the sidecars are RUNNERS, not derivations — a secret in a derivation
-      # is a secret in the store:
-      #   nix run .#personalize -- ./image.raw
-      apps.${system} = {
-        personalize = {
-          type = "app";
-          program = pkgs.lib.getExe endpoints.image-personalize.run;
-        };
-        # The sidecar carries the same slot as a separate medium; take it as a filesystem
-        # (vfat / iso) or a format you read (json). Its identity is on the endpoint above.
-        secrets-sidecar = {
-          type = "app";
-          program = pkgs.lib.getExe endpoints.image-secrets-vfat.run;
-        };
-        secrets-sidecar-iso = {
-          type = "app";
-          program = pkgs.lib.getExe endpoints.image-secrets-iso.run;
-        };
-      };
+      # What this host CANNOT produce, as DATA — the law and the endpoint to use instead —
+      # never a crash. A disk/ext4 host has none; a zfs or squashfs host does:
+      #   nix eval .#holes.x86_64-linux --json
+      #   endpoints.image-raw.label / .volumeId  — mount a finished artifact by what it carries
+      holes.${system} = d.holes;
     };
 }

@@ -7,8 +7,9 @@
 # Each target runs as its own nix process (one host's eval fits this box, all of them in
 # one eval do not) and e2e run with --max-jobs 1 (two qemu + builds OOM the machine). The
 # guest's vcpu count is not a knob here — each e2e sizes its own -smp to the machine it runs
-# on ($(nproc) - 1, floor 1). Sequential on purpose. Logs: docs/blocks/.logs/<target>.log;
-# a PASS/FAIL summary at the end, exit nonzero on any failure.
+# on ($(nproc) - 1, floor 1). Sequential on purpose, and it garbage-collects between targets
+# when the store runs low (gc_free_gib) so the whole suite fits a small disk. Logs:
+# docs/blocks/.logs/<target>.log; a PASS/FAIL summary at the end, exit nonzero on any failure.
 #
 # Usage:
 #   docs/blocks/run-all.sh              # everything
@@ -19,12 +20,17 @@ set -euo pipefail
 
 command -v nix > /dev/null 2>&1 || { echo "run-all: nix not on PATH" >&2; exit 1; }
 
-# A cold full run builds ~15-20G of artifacts; starting under that just trades a clear
-# refusal now for ENOSPC failures mid-suite.
+# Reclaim the store BETWEEN targets once free space drops under this many GiB: the suite builds
+# more images across its 60-odd targets than a small disk holds at once, and a sequential run
+# needs only the target in flight. Set gc_free_gib=0 to never GC (a big disk / CI).
+gc_free_gib="${gc_free_gib:-15}"
+
+# A cold full run builds ~15-20G of artifacts. Under gc_free_gib the run reclaims the store
+# between targets on its own; this only warns when even that headroom is thin at the start.
 free_kib=$(df --output=avail /nix/store | tail -1)
-if [ "$free_kib" -lt $((20 * 1024 * 1024)) ]; then
-  echo "run-all: only $((free_kib / 1024 / 1024))G free on /nix/store — a cold run needs ~20G;" >&2
-  echo "run-all: garbage-collect first (nix-collect-garbage), or expect ENOSPC failures" >&2
+if [ "$free_kib" -lt $((gc_free_gib * 1024 * 1024)) ]; then
+  echo "run-all: only $((free_kib / 1024 / 1024))G free on /nix/store (gc threshold ${gc_free_gib}G)" >&2
+  echo "run-all: it will nix-collect-garbage between targets; a single target may still need more" >&2
 fi
 
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -53,6 +59,23 @@ matches() {
     case "$id" in *"$f"*) return 0 ;; esac
   done
   return 1
+}
+
+# Between targets, free the store if it has dropped under gc_free_gib. The built results are
+# --no-link so nothing roots them — GC drops the artifacts of targets already done (their PASS
+# is recorded) and leaves the run enough room for the next one. It costs a re-substitute of
+# shared deps, which is the price of fitting a ~15-20G suite on a smaller disk.
+gc_if_low() {
+  [ "$gc_free_gib" -gt 0 ] || return 0
+  local free_kib
+  free_kib=$(df --output=avail /nix/store | tail -1) || return 0
+  [ "$free_kib" -lt $((gc_free_gib * 1024 * 1024)) ] || return 0
+  echo "== $((free_kib / 1024 / 1024))G free < ${gc_free_gib}G — nix-collect-garbage $(date +%H:%M:%S)"
+  # A GC failure is not fatal: the worst case is the next build hits ENOSPC and fails loudly,
+  # which is what this prevents — not a reason to abort the whole run.
+  nix-collect-garbage > /dev/null 2>&1 || true
+  free_kib=$(df --output=avail /nix/store | tail -1) || true
+  echo "== after gc: $((free_kib / 1024 / 1024))G free"
 }
 
 # Discover targets: every attribute whose name says it is a test. The filter lives HERE
@@ -97,6 +120,7 @@ pass=()
 fail=()
 for t in "${targets[@]}"; do
   matches "$t" || continue
+  gc_if_low
   dir=${t%%:*}
   attr=${t#*:}
   budget="$eval_timeout"

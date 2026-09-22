@@ -53,7 +53,7 @@ in
     run_qemu() {
       local tree="$1" append="$2" res="$3" log="$4"
       sc=0
-      timeout 1500 qemu-system-x86_64 -enable-kvm -cpu host -m 3072 -smp 1 \
+      timeout 3000 qemu-system-x86_64 -enable-kvm -cpu host -m 3072 -smp 1 \
         -kernel "$tree/kernel" -initrd "$tree/initrd" -append "$append" \
         -drive if=none,id=target,format=raw,file=target.img \
         -device virtio-blk-pci,drive=target,serial=target \

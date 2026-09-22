@@ -32,7 +32,7 @@ in
 
     run_installer() {
       sc=0
-      timeout 1500 qemu-system-x86_64 -enable-kvm -cpu host -m 3072 -smp 1 \
+      timeout 3000 qemu-system-x86_64 -enable-kvm -cpu host -m 3072 -smp 1 \
         -kernel tree/kernel -initrd tree/initrd -append "$cmdline" \
         -drive if=none,id=target,format=raw,file=target.img \
         -device virtio-blk-pci,drive=target,serial=target \

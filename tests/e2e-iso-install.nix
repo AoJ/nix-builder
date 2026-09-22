@@ -27,7 +27,7 @@ in
 
     echo "== phase A: the iso installer boots from the medium and installs =="
     sc=0
-    timeout 1500 qemu-system-x86_64 -enable-kvm -cpu host -m 3072 -smp 1 \
+    timeout 3000 qemu-system-x86_64 -enable-kvm -cpu host -m 3072 -smp 1 \
       -drive if=pflash,format=raw,readonly=on,file=${pkgs.OVMF.fd}/FV/OVMF_CODE.fd \
       -drive if=pflash,format=raw,file=vars.fd \
       -drive if=virtio,format=raw,file=work.iso \

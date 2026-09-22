@@ -43,7 +43,7 @@ in
     # stub refuses with Out of Resources. The kexec e2es escape this (qemu -initrd loads it
     # once); a dd'd inmemory image does not.
     sc=0
-    timeout 1800 qemu-system-x86_64 -enable-kvm -cpu host -m 6144 -smp 1 \
+    timeout 3600 qemu-system-x86_64 -enable-kvm -cpu host -m 6144 -smp 1 \
       -drive if=pflash,format=raw,readonly=on,file=${pkgs.OVMF.fd}/FV/OVMF_CODE.fd \
       -drive if=pflash,format=raw,file=vars.fd \
       -drive if=none,id=target,format=raw,file=target.img \

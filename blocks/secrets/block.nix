@@ -89,7 +89,7 @@ in
         iso = runner ./sidecar-iso.sh ''
           volume_id=${lib.escapeShellArg isoVolid}
           manifest=${manifest}
-        '' [ pkgs.coreutils pkgs.xorriso ];
+        '' [ pkgs.coreutils pkgs.findutils pkgs.xorriso ];
 
         json = runner ./sidecar-json.sh ''
           manifest=${manifest}

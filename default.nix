@@ -21,4 +21,5 @@ in
   test-host-record = import ./tests/contract/host-record.nix { inherit pkgs tools; };
   test-images-for = import ./tests/contract/images-for.nix { inherit pkgs tools; };
   test-bash-lib = import ./tests/contract/bash-lib.nix { inherit pkgs; };
+  test-space-check = import ./tests/contract/space-check.nix { inherit pkgs tools; };
 }

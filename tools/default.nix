@@ -10,6 +10,11 @@ let
   ids = import ./ids.nix;
   constants = import ./constants.nix;
   inherit (constants) registrationPath storeFileName;
+  spaceCheck = bashTool {
+    name = "space-check";
+    runtimeInputs = [ pkgs.coreutils ];
+    text = builtins.readFile ./space-check.sh;
+  };
   # zfs (userland here, the kernel module in the installer profile) rides only where the
   # target storage is zfs — an ext4 installer carries neither.
   actionWipe = { storage }: bashTool {
@@ -20,7 +25,7 @@ let
   };
 in
 {
-  inherit bashTool ids actionWipe;
+  inherit bashTool ids actionWipe spaceCheck;
   # The secret manifest's ONE shape: the nix side that writes it, and the bash side every
   # runner prepends to read it.
   secretManifest = import ./secret-manifest.nix { inherit pkgs; };
@@ -29,7 +34,7 @@ in
   fatImageApp = (import ./fat-image.nix { inherit pkgs bashTool; }).app;
   gptDisk = import ./gpt-disk.nix { inherit pkgs bashTool ids; };
   store = import ./store.nix { inherit pkgs bashTool registrationPath; };
-  formatVm = import ./format-vm.nix { inherit pkgs bashTool; };
+  formatVm = import ./format-vm.nix { inherit pkgs bashTool spaceCheck; };
   actionInstall = { storage }: bashTool {
     name = "action-install";
     runtimeInputs = (with pkgs; [

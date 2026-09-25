@@ -13,7 +13,7 @@
 # normalised — but bytes are also WHERE the kernel places writes, and allocation is
 # scheduling (txg sync, writeback), which has no seed. Same inputs give the same CONTENT;
 # the same-bytes gate is the assembly path's alone.
-{ pkgs, bashTool }:
+{ pkgs, bashTool, spaceCheck }:
 
 let
   inherit (pkgs) lib;
@@ -35,6 +35,7 @@ let
   disk =
     if lib.length disks == 1 then lib.head disks
     else throw "format-vm ${name}: exactly ONE disk, the layout declares ${toString (lib.length disks)}";
+  imageSize = disk.imageSize or "2G";
 
   zpools = lib.attrNames (layout.disko.devices.zpool or { });
   needsZfs = zpools != [ ];
@@ -106,7 +107,8 @@ vmTools.runInLinuxVM (pkgs.runCommand "${name}.img"
     outputs = [ "out" "layout" ];
     memSize = 2048;
     preVM = ''
-      ${pkgs.qemu-utils}/bin/qemu-img create -f raw "$out" ${disk.imageSize or "2G"}
+      ${lib.getExe spaceCheck} "$(dirname "$out")" ${imageSize} ${lib.escapeShellArg "${name}.img"}
+      ${pkgs.qemu-utils}/bin/qemu-img create -f raw "$out" ${imageSize}
     '';
     postVM = ''
       install -m 0644 xchg/layout.json "$layout"

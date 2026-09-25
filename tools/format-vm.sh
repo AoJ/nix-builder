@@ -35,6 +35,14 @@ export SOURCE_DATE_EPOCH=1
 run "disko format" "$fv_format"
 run "disko mount" "$fv_mount"
 
+# A pool's default failmode=wait suspends ALL its I/O on a device error — the runner's disk
+# running full, say — and the build hangs instead of failing. While the image is written,
+# errors fail the build; the default is back before the pool is exported into the artifact.
+read -r -a build_pools <<< "${fv_pools:-}"
+for p in "${build_pools[@]}"; do
+  run "fail fast on I/O errors while building: $p" zpool set failmode=continue "$p"
+done
+
 # The pool guid is DERIVED, not the create's random one — the identity rule (every id
 # derived from the artifact's name) applied as far as zfs allows; vdev guids stay random,
 # which is one of the reasons this path never claims same-bytes.
@@ -104,6 +112,9 @@ lsblk --json --bytes --output NAME,PARTLABEL,FSTYPE,START,SIZE "$disk" \
              startByte: ((.start // 0) * 512),
              sizeByte: .size }]' > /tmp/xchg/layout.json
 
+for p in "${build_pools[@]}"; do
+  run "restore the default failmode: $p" zpool set failmode=wait "$p"
+done
 run "disko unmount" "$fv_unmount"
 
 # disko's unmount exports the pool; a pool still imported here would carry THIS boot's

@@ -49,13 +49,20 @@ rec {
   # with its law — present in the set, listed by `nix flake show`, refused only when built),
   # the runners become `apps`. Splitting by kind, never by whether a pair is allowed, is
   # what keeps every host's set identical and a wrong build loud instead of a missing name.
+  # Sorted by NAME, never by looking inside: an endpoint is an evaluation of its own (a live
+  # face, an installer), and a consumer asking for one deliverable must not pay for all of
+  # them. The names are the composer's; the compose contract holds this rule to the shapes.
   deliverables = { pkgs, endpoints }:
-    let inherit (pkgs) lib; in
+    let
+      inherit (pkgs) lib;
+      isRunner = n: lib.hasPrefix "image-personalize" n || lib.hasPrefix "image-secrets-" n;
+      isArtifact = n: lib.hasPrefix "image-" n && !(isRunner n);
+    in
     {
       packages = lib.mapAttrs (_: e: e.file)
-        (lib.filterAttrs (_: e: e ? file) endpoints);
+        (lib.filterAttrs (n: _: isArtifact n) endpoints);
       apps = lib.mapAttrs (_: e: { type = "app"; program = lib.getExe e.run; })
-        (lib.filterAttrs (_: e: e ? run) endpoints);
+        (lib.filterAttrs (n: _: isRunner n) endpoints);
     };
 
   # Paths blocks OWNS and publishes, so a host reads them from here instead of hardcoding

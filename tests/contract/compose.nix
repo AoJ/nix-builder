@@ -87,7 +87,23 @@ let
 
   unproduced = host // { secrets = host.secrets // { delivery = [ "embedded" "deploy" ]; }; };
 
+  inherit (import ../../lib/api.nix) deliverables;
+  d = deliverables { inherit pkgs; endpoints = e; };
+  untouchable = deliverables {
+    inherit pkgs;
+    endpoints = lib.mapAttrs (n: _: throw "deliverables looked inside ${n}") e;
+  };
+  names = lib.attrNames;
+
 in
+
+assert lib.assertMsg (names d.apps == names (lib.filterAttrs (_: x: x ? run) e))
+  "deliverables' apps are exactly the endpoints that carry a runner";
+assert lib.assertMsg (names d.packages == names (lib.filterAttrs (_: x: x ? file) e))
+  "deliverables' packages are exactly the endpoints that carry an artifact";
+assert lib.assertMsg
+  (names untouchable.apps == names d.apps && names untouchable.packages == names d.packages)
+  "deliverables sorts by name alone: asking for one deliverable evaluates no other endpoint";
 
 assert lib.assertMsg (e.image-raw.toplevel == e.image-qcow2.toplevel)
   "raw and qcow2 pack the SAME closure";
